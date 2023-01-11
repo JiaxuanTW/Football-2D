@@ -13,12 +13,13 @@ import com.jme3.math.Ray;
 import com.jme3.math.Vector2f;
 import com.jme3.math.Vector3f;
 import com.jme3.renderer.RenderManager;
-import com.jme3.scene.*;
+import com.jme3.scene.Geometry;
+import com.jme3.scene.Node;
+import com.jme3.scene.Spatial;
 import com.jme3.scene.shape.Quad;
 import com.jme3.scene.shape.Sphere;
 import com.jme3.system.AppSettings;
 import com.jme3.texture.Texture;
-import com.jme3.util.BufferUtils;
 import org.dyn4j.dynamics.Body;
 import org.dyn4j.dynamics.BodyFixture;
 import org.dyn4j.geometry.Circle;
@@ -30,7 +31,6 @@ import org.dyn4j.world.World;
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
     private final World<Body> world = new World<>();
     private BodyControl selectedPlayer;
-    private Geometry directGeom;
     private static final float PPM = 100;
 
     public static void main(String[] args) {
@@ -86,6 +86,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 Vector3f direction = cam.getWorldCoordinates(click2D, 1)
                         .subtractLocal(click3D).normalizeLocal();
 
+
                 CollisionResults results = new CollisionResults();
                 rootNode.collideWith(new Ray(click3D, direction), results);
                 if (results.size() > 0) {
@@ -96,7 +97,15 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 }
             } else {
                 if (selectedPlayer != null) {
-                    // selectedPlayer.body.applyForce(new Vector2(100, 10));
+                    Vector2f click2D = inputManager.getCursorPosition();
+                    Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
+                    Vector2 player2D = selectedPlayer.body.getWorldCenter();
+                    Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
+                    Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
+                    Vector3f direction = newClick3D.subtract(player3D);
+                    System.out.println(direction.length());
+
+                    selectedPlayer.body.applyForce(new Vector2(direction.x * direction.length() * 40, direction.y * direction.length() * 40));
                     selectedPlayer = null;
                 }
             }
@@ -106,32 +115,18 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     @Override
     public void onAnalog(String name, float value, float tpf) {
         if (name.equals("LeftClick") && selectedPlayer != null) {
-            if (directGeom != null) directGeom.removeFromParent();
             Vector2f click2D = inputManager.getCursorPosition();
             Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
             Vector2 player2D = selectedPlayer.body.getWorldCenter();
             Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
 
             Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
-            Vector3f direction = newClick3D.subtract(player3D).normalize().divide(10);
+            Vector3f direction = newClick3D.subtract(player3D).normalize();
+            double playerAngle = selectedPlayer.body.getTransform().getRotationAngle();
+            float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
+            cursorAngle *= direction.x > 0 ? -1 : 1;
+            selectedPlayer.body.rotateAboutCenter(cursorAngle - playerAngle);
 
-            // Custom mesh for creating triangles
-            Mesh mesh = new Mesh();
-            Vector3f[] vertices = new Vector3f[3];
-            vertices[0] = click3D;
-            vertices[1] = new Vector3f(player3D.x - direction.y, player3D.y + direction.x, 0);
-            vertices[2] = new Vector3f(player3D.x + direction.y, player3D.y - direction.x, 0);
-            int[] indices = new int[]{0, 1, 2};
-            mesh.setBuffer(VertexBuffer.Type.Position, 3, BufferUtils.createFloatBuffer(vertices));
-            mesh.setBuffer(VertexBuffer.Type.Index, 3, BufferUtils.createIntBuffer(indices));
-            mesh.updateBound();
-            mesh.setStatic();
-
-            directGeom = new Geometry("Direction", mesh);
-            Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-            mat.setColor("Color", ColorRGBA.Blue);
-            directGeom.setMaterial(mat);
-            rootNode.attachChild(directGeom);
         }
     }
 
@@ -219,28 +214,60 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     }
 
     private void createPlayers() {
-        final float playerRadius = 35f / PPM;
+        final float playerRadius = 35 / PPM;
+        final float triangleSize = 20 / PPM;
+        final float rectHeight = 10 / PPM;
 
         Body body = new Body();
         BodyFixture fixture = body.addFixture(new Circle(playerRadius));
-        fixture.setRestitution(0.7);
+        fixture.setRestitution(0.05);
         body.setMass(MassType.NORMAL);
-        body.setLinearDamping(0.4);
-        body.setAngularDamping(0.4);
+        body.setLinearDamping(1);
+        body.setAngularDamping(Double.MAX_VALUE);
         body.translate(-100 / PPM, -60 / PPM);
         world.addBody(body);
 
-        Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        mat.setColor("Color", ColorRGBA.Blue);
         Sphere sphere = new Sphere(32, 32, playerRadius);
-        Geometry geom = new Geometry("Player", sphere);
-        geom.setMaterial(mat);
+        Quad triangle = new Quad(triangleSize, triangleSize);
+        Quad frontRect = new Quad(playerRadius * 2, rectHeight);
+        Quad backRect = new Quad(playerRadius * 2, rectHeight);
 
+        Material mat1 = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        mat1.setColor("Color", ColorRGBA.Blue);
+        Geometry geom = new Geometry("Player", sphere);
+        geom.setMaterial(mat1);
+
+        Texture tex = assetManager.loadTexture("Textures/triangle.png");
+        Material mat2 = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        mat2.setTexture("ColorMap", tex);
+        mat2.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        Geometry directCtrl = new Geometry("Triangle", triangle);
+        directCtrl.setMaterial(mat2);
+        directCtrl.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
         Node node = new Node("PlayerNode");
         BodyControl control = new BodyControl(body);
         geom.setUserData("bodyControl", control);
+
+        Material forceCtrlBaseMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        forceCtrlBaseMat.setColor("Color", ColorRGBA.Blue);
+        Geometry forceCtrlBase = new Geometry("ForceB", backRect);
+        forceCtrlBaseMat.setColor("Color", ColorRGBA.White);
+        forceCtrlBase.setMaterial(forceCtrlBaseMat);
+
+        Material forceCtrlMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        forceCtrlMat.setColor("Color", ColorRGBA.Blue);
+        Geometry forceCtrl = new Geometry("Force", frontRect);
+        forceCtrl.setMaterial(forceCtrlMat);
+        forceCtrl.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+        forceCtrlBase.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+        geom.setUserData("rect", forceCtrl);
+
         node.addControl(control);
         node.attachChild(geom);
+        node.attachChild(directCtrl);
+        node.attachChild(forceCtrl);
+        node.attachChild(forceCtrlBase);
 
         rootNode.attachChild(node);
     }
