@@ -30,7 +30,7 @@ import org.dyn4j.geometry.Vector2;
 import org.dyn4j.world.World;
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
-    private final World world = new World();
+    private final World<Body> world = new World<>();
     private BodyControl selectedPlayer;
     private Geometry lineGeom;
     private static final float PPM = 100;
