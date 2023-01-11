@@ -14,10 +14,8 @@ import com.jme3.math.Vector2f;
 import com.jme3.math.Vector3f;
 import com.jme3.renderer.RenderManager;
 import com.jme3.scene.Geometry;
-import com.jme3.scene.Mesh;
 import com.jme3.scene.Node;
 import com.jme3.scene.Spatial;
-import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Line;
 import com.jme3.scene.shape.Quad;
 import com.jme3.scene.shape.Sphere;
@@ -32,7 +30,7 @@ import org.dyn4j.geometry.Vector2;
 import org.dyn4j.world.World;
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
-    private World world = new World();
+    private final World world = new World();
     private BodyControl selectedPlayer;
     private Geometry lineGeom;
     private static final float PPM = 100;
@@ -119,15 +117,16 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             lineGeom = new Geometry("Line", line);
             Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             mat.setColor("Color", ColorRGBA.Blue);
-            line.setLineWidth(20);
+            mat.getAdditionalRenderState().setLineWidth(500);
             lineGeom.setMaterial(mat);
             rootNode.attachChild(lineGeom);
         }
     }
 
     private void createBackground() {
-        Mesh backgroundMesh = new Box(Vector3f.ZERO, cam.getWidth() / PPM / 2, cam.getHeight() / PPM / 2, 0);
-        Geometry background = new Geometry("Background", backgroundMesh);
+        Quad plane = new Quad(cam.getWidth() / PPM, cam.getHeight() / PPM);
+        Geometry background = new Geometry("Background", plane);
+        background.center();
         Texture texture = assetManager.loadTexture("Textures/background.png");
         Material material = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         material.setTexture("ColorMap", texture);
