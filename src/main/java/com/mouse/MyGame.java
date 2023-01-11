@@ -35,6 +35,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     private World world = new World();
     private BodyControl selectedPlayer;
     private Geometry lineGeom;
+    private static final float PPM = 100;
 
     public static void main(String[] args) {
         MyGame app = new MyGame();
@@ -49,12 +50,12 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     @Override
     public void simpleInitApp() {
         cam.setParallelProjection(true);
-        cam.setLocation(new Vector3f(0, 0, 1));
+        cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
         cam.setFrustum(-1000, 1000,
-                (float) -cam.getWidth() / 2,
-                (float) cam.getWidth() / 2,
-                (float) cam.getHeight() / 2,
-                (float) -cam.getHeight() / 2);
+                -cam.getWidth() / PPM / 2,
+                cam.getWidth() / PPM / 2,
+                cam.getHeight() / PPM / 2,
+                -cam.getHeight() / PPM / 2);
         getFlyByCamera().setEnabled(false);
 
         setDisplayStatView(false);
@@ -68,7 +69,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
         inputManager.addListener(this, "LeftClick");
 
-        // world.setGravity(World.ZERO_GRAVITY);
+        world.setGravity(World.ZERO_GRAVITY);
     }
 
     @Override
@@ -99,9 +100,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 }
             } else {
                 if (selectedPlayer != null) {
-                    // selectedPlayer.body.translateToOrigin();
-                    // selectedPlayer.body.applyForce(new Vector2(100, 100));
-                    // selectedPlayer.body.setLinearVelocity(100, 10);
+                    selectedPlayer.body.applyForce(new Vector2(100, 10));
                     selectedPlayer = null;
                 }
             }
@@ -127,8 +126,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     }
 
     private void createBackground() {
-        Mesh backgroundMesh = new Box(Vector3f.ZERO,
-                (float) cam.getWidth() / 2, (float) cam.getHeight() / 2, 0);
+        Mesh backgroundMesh = new Box(Vector3f.ZERO, cam.getWidth() / PPM / 2, cam.getHeight() / PPM / 2, 0);
         Geometry background = new Geometry("Background", backgroundMesh);
         Texture texture = assetManager.loadTexture("Textures/background.png");
         Material material = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -145,7 +143,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         for (int i = 0; i < 2; i++) {
             horizontalBoundaries[i] = new Body();
             horizontalBoundaries[i].setMass(MassType.INFINITE);
-            horizontalBoundaries[i].addFixture(new Rectangle(1000, 10));
+            horizontalBoundaries[i].addFixture(new Rectangle(1000 / PPM, 10 / PPM));
             world.addBody(horizontalBoundaries[i]);
 
             Node node = new Node("BoundaryNode");
@@ -153,8 +151,8 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
             // Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             // mat.setColor("Color", ColorRGBA.Blue);
-            // Geometry geom = new Geometry("borderGeom", new Quad(1000, 10));
-            // geom.move(-500, -5, 0);
+            // Geometry geom = new Geometry("borderGeom", new Quad(1000 / PPM, 10 / PPM));
+            // geom.move(-500 / PPM, -5 / PPM, 0 / PPM);
             // geom.setMaterial(mat);
             // node.attachChild(geom);
 
@@ -164,7 +162,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         for (int i = 0; i < 2; i++) {
             verticalBoundaries[i] = new Body();
             verticalBoundaries[i].setMass(MassType.INFINITE);
-            verticalBoundaries[i].addFixture(new Rectangle(10, 500));
+            verticalBoundaries[i].addFixture(new Rectangle(10 / PPM, 500 / PPM));
             world.addBody(verticalBoundaries[i]);
 
             Node node = new Node("BoundaryNode");
@@ -172,8 +170,8 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
             // Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             // mat.setColor("Color", ColorRGBA.Blue);
-            // Geometry geom = new Geometry("borderGeom", new Quad(10, 500));
-            // geom.move(-5, -250, 0);
+            // Geometry geom = new Geometry("borderGeom", new Quad(10 / PPM, 500 / PPM));
+            // geom.move(-5 / PPM, -250 / PPM, 0 / PPM);
             // geom.setMaterial(mat);
             // node.attachChild(geom);
 
@@ -183,7 +181,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         for (int i = 0; i < 4; i++) {
             cornerBoundaries[i] = new Body();
             cornerBoundaries[i].setMass(MassType.INFINITE);
-            cornerBoundaries[i].addFixture(new Rectangle(90, 125));
+            cornerBoundaries[i].addFixture(new Rectangle(90 / PPM, 125 / PPM));
             world.addBody(cornerBoundaries[i]);
 
             Node node = new Node("BoundaryNode");
@@ -191,26 +189,26 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
             // Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             // mat.setColor("Color", ColorRGBA.Blue);
-            // Geometry geom = new Geometry("borderGeom", new Quad(90, 125));
-            // geom.move(-45, -62.5f, 0);
+            // Geometry geom = new Geometry("borderGeom", new Quad(90 / PPM, 125 / PPM));
+            // geom.move(-45 / PPM, -62.5f / PPM, 0 / PPM);
             // geom.setMaterial(mat);
             // node.attachChild(geom);
 
             rootNode.attachChild(node);
         }
 
-        horizontalBoundaries[0].translate(0, 195);
-        horizontalBoundaries[1].translate(0, -315);
-        verticalBoundaries[0].translate(-590, -60);
-        verticalBoundaries[1].translate(590, -60);
-        cornerBoundaries[0].translate(-545, 130);
-        cornerBoundaries[1].translate(545, 130);
-        cornerBoundaries[2].translate(-545, -250);
-        cornerBoundaries[3].translate(545, -250);
+        horizontalBoundaries[0].translate(0 / PPM, 195 / PPM);
+        horizontalBoundaries[1].translate(0 / PPM, -315 / PPM);
+        verticalBoundaries[0].translate(-590 / PPM, -60 / PPM);
+        verticalBoundaries[1].translate(590 / PPM, -60 / PPM);
+        cornerBoundaries[0].translate(-545 / PPM, 130 / PPM);
+        cornerBoundaries[1].translate(545 / PPM, 130 / PPM);
+        cornerBoundaries[2].translate(-545 / PPM, -250 / PPM);
+        cornerBoundaries[3].translate(545 / PPM, -250 / PPM);
     }
 
     private void createPlayers() {
-        final float playerRadius = 35f;
+        final float playerRadius = 35f / PPM;
 
         Body body = new Body();
         BodyFixture fixture = body.addFixture(new Circle(playerRadius));
@@ -218,7 +216,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         body.setMass(MassType.NORMAL);
         body.setLinearDamping(0.4);
         body.setAngularDamping(0.4);
-        body.translate(-100, -60);
+        body.translate(-100 / PPM, -60 / PPM);
         world.addBody(body);
 
         Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -237,7 +235,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     }
 
     private void createBall() {
-        final float ballRadius = 25f;
+        final float ballRadius = 25f / PPM;
 
         Body body = new Body();
         BodyFixture fixture = body.addFixture(new Circle(ballRadius));
@@ -246,7 +244,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         body.setGravityScale(5f);
         body.setLinearDamping(0.4);
         body.setAngularDamping(0.4);
-        body.translate(0, -60);
+        body.translate(0 / PPM, -60 / PPM);
         world.addBody(body);
 
         Texture tex = assetManager.loadTexture("Textures/football.png");
