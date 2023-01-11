@@ -36,16 +36,53 @@ import java.util.HashMap;
 import java.util.Map;
 
 
+
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
     private final World<Body> world = new World<>();
-    Map<String, Force> move = new HashMap<>();
+    Map<String, Force> action = new HashMap<>();
     private static final float PPM = 100;
     private Spatial selectedPlayer;
     //-------------------------------------------------------------------------------------------------------------//
-    private String ally = "N"; // Blue, Red, None
+    private String ally = "B"; // Blue, Red, None
     private int bScore = 0;
     private int rScore = 0;
     private int turns = 1;
+
+    @Override
+    public void simpleInitApp() {
+        cam.setParallelProjection(true);
+        cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
+        cam.setFrustum(-1000, 1000,
+                -cam.getWidth() / PPM / 2,
+                cam.getWidth() / PPM / 2,
+                cam.getHeight() / PPM / 2,
+                -cam.getHeight() / PPM / 2);
+        getFlyByCamera().setEnabled(false);
+
+        setDisplayStatView(false);
+        setDisplayFps(false);
+
+        // Init Lemur GUI
+        GuiGlobals.initialize(this);
+
+
+        createBackground();
+        createBoundaries();
+        createPlayers("Player-B1", ColorRGBA.Blue, -200, 80);
+        createPlayers("Player-B2", ColorRGBA.Blue, -150, -60);
+        createPlayers("Player-B3", ColorRGBA.Blue, -200, -200);
+        createPlayers("Player-R1", ColorRGBA.Red, 200, 80);
+        createPlayers("Player-R2", ColorRGBA.Red, 150, -60);
+        createPlayers("Player-R3", ColorRGBA.Red, 200, -200);
+        createBall();
+        createHUD();
+        setText(bScore, rScore);
+
+        inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        inputManager.addListener(this, "LeftClick");
+
+        world.setGravity(World.ZERO_GRAVITY);
+    }
 
     //----------------------------------------------------------------------------------------------------------//
     public static void main(String[] args) {
@@ -69,46 +106,15 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     }
 
     @Override
-    public void simpleInitApp() {
-        cam.setParallelProjection(true);
-        cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
-        cam.setFrustum(-1000, 1000,
-                -cam.getWidth() / PPM / 2,
-                cam.getWidth() / PPM / 2,
-                cam.getHeight() / PPM / 2,
-                -cam.getHeight() / PPM / 2);
-        getFlyByCamera().setEnabled(false);
-
-        setDisplayStatView(false);
-        setDisplayFps(false);
-
-        // Init Lemur GUI
-        GuiGlobals.initialize(this);
-
-
-        createBackground();
-        createBoundaries();
-        createPlayers("Player-B1", -200, 80);
-        createPlayers("Player-B2", -150, -60);
-        createPlayers("Player-B3", -200, -200);
-        createBall();
-        createHUD();
-        setText(bScore, rScore);
-
-        inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
-        inputManager.addListener(this, "LeftClick");
-
-        world.setGravity(World.ZERO_GRAVITY);
-    }
-
-    @Override
     public void simpleUpdate(float tpf) {
         world.update(tpf);
+        Boolean stop = true;
 
-    }
+        BodyControl obj = rootNode.getChild("Ball").getUserData("bodyControl");
+        if (!obj.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+            stop = false;
+        }
 
-    @Override
-    public void simpleRender(RenderManager rm) {
     }
 
     @Override
@@ -125,11 +131,8 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 if (results.size() > 0) {
                     Spatial spatial = results.getClosestCollision().getGeometry();
                     System.out.println(spatial.getName());
-                    if (spatial.getName().startsWith("Player")) {
+                    if (spatial.getName().startsWith("Player-" + ally)) {
                         selectedPlayer = spatial;
-                    }
-                    if (spatial.getName().startsWith("ReadyButton")) {
-                        System.out.println("Bang");
                     }
                 }
             } else {
@@ -143,9 +146,13 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
                     // Saving pre_executed Force into "move" map with player's name
 
-                    move.put(selectedPlayer.getName(), new Force(
-                            direction.x * direction.length() * 40,
-                            direction.y * direction.length() * 40
+                    System.out.println(direction.length());
+                    double power = 50 * (direction.length() > 5 ? 5 : direction.length());
+                    System.out.println(power);
+                    direction.normalizeLocal();
+                    action.put(selectedPlayer.getName(), new Force(
+                            direction.x * power,
+                            direction.y * power
                     ));
 
                     // selectedPlayer.body.applyForce(new Vector2(
@@ -156,6 +163,71 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 }
             }
         }
+    }
+
+    @Override
+    public void simpleRender(RenderManager rm) {
+    }
+
+    private void createPlayers(String name, ColorRGBA color, float posX, float posY) {
+        final float playerRadius = 35 / PPM;
+        final float triangleSize = 20 / PPM;
+        final float rectHeight = 10 / PPM;
+
+        // Create body for the player
+        Body body = new Body();
+        BodyFixture fixture = body.addFixture(new Circle(playerRadius));
+        fixture.setRestitution(0.05);
+        body.setMass(MassType.NORMAL);
+        body.setLinearDamping(1);
+        body.setAngularDamping(Double.MAX_VALUE);
+        body.translate(posX / PPM, posY / PPM);
+        world.addBody(body);
+
+        // Create player
+        Sphere playerMesh = new Sphere(32, 32, playerRadius);
+        Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        playerMat.setColor("Color", color);
+        Geometry playerGeom = new Geometry(name, playerMesh);
+        playerGeom.setMaterial(playerMat);
+
+        // Create a small triangle indicating the direction of player
+        Quad directMesh = new Quad(triangleSize, triangleSize);
+        Texture directTex = assetManager.loadTexture("Textures/triangle.png");
+        Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        directMat.setTexture("ColorMap", directTex);
+        directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        Geometry directGeom = new Geometry("Triangle", directMesh);
+        directGeom.setMaterial(directMat);
+        directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
+
+        // Create the charge bar - background
+        Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
+        Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        chargeBarBgMat.setColor("Color", ColorRGBA.White);
+        Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground", chargeBarBgMesh);
+        chargeBarBgGeom.setMaterial(chargeBarBgMat);
+        chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+        // Create the charge bar - percentage
+        Quad chargeBarMesh = new Quad(playerRadius * 2, rectHeight);
+        Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        chargeBarMat.setColor("Color", ColorRGBA.Blue);
+        Geometry chargeBarGeom = new Geometry("ChargeBar", chargeBarMesh);
+        chargeBarGeom.setMaterial(chargeBarMat);
+        chargeBarGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+        Node node = new Node("PlayerNode");
+        BodyControl control = new BodyControl(body);
+        playerGeom.setUserData("bodyControl", control);
+
+        node.addControl(control);
+        node.attachChild(playerGeom);
+        node.attachChild(directGeom);
+        // node.attachChild(chargeBarBgGeom);
+        // node.attachChild(chargeBarGeom);
+
+        rootNode.attachChild(node);
     }
 
     @Override
@@ -260,67 +332,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         cornerBoundaries[3].translate(545 / PPM, -250 / PPM);
     }
 
-    private void createPlayers(String name, float posX, float posY) {
-        final float playerRadius = 35 / PPM;
-        final float triangleSize = 20 / PPM;
-        final float rectHeight = 10 / PPM;
-
-        // Create body for the player
-        Body body = new Body();
-        BodyFixture fixture = body.addFixture(new Circle(playerRadius));
-        fixture.setRestitution(0.05);
-        body.setMass(MassType.NORMAL);
-        body.setLinearDamping(1);
-        body.setAngularDamping(Double.MAX_VALUE);
-        body.translate(posX / PPM, posY / PPM);
-        world.addBody(body);
-
-        // Create player
-        Sphere playerMesh = new Sphere(32, 32, playerRadius);
-        Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        playerMat.setColor("Color", ColorRGBA.Blue);
-        Geometry playerGeom = new Geometry(name, playerMesh);
-        playerGeom.setMaterial(playerMat);
-
-        // Create a small triangle indicating the direction of player
-        Quad directMesh = new Quad(triangleSize, triangleSize);
-        Texture directTex = assetManager.loadTexture("Textures/triangle.png");
-        Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        directMat.setTexture("ColorMap", directTex);
-        directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-        Geometry directGeom = new Geometry("Triangle", directMesh);
-        directGeom.setMaterial(directMat);
-        directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
-
-        // Create the charge bar - background
-        Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
-        Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        chargeBarBgMat.setColor("Color", ColorRGBA.White);
-        Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground", chargeBarBgMesh);
-        chargeBarBgGeom.setMaterial(chargeBarBgMat);
-        chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
-
-        // Create the charge bar - percentage
-        Quad chargeBarMesh = new Quad(playerRadius * 2, rectHeight);
-        Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        chargeBarMat.setColor("Color", ColorRGBA.Blue);
-        Geometry chargeBarGeom = new Geometry("ChargeBar", chargeBarMesh);
-        chargeBarGeom.setMaterial(chargeBarMat);
-        chargeBarGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
-
-        Node node = new Node("PlayerNode");
-        BodyControl control = new BodyControl(body);
-        playerGeom.setUserData("bodyControl", control);
-
-        node.addControl(control);
-        node.attachChild(playerGeom);
-        node.attachChild(directGeom);
-        // node.attachChild(chargeBarBgGeom);
-        // node.attachChild(chargeBarGeom);
-
-        rootNode.attachChild(node);
-    }
-
     private void createBall() {
         final float ballRadius = 25f / PPM;
 
@@ -344,46 +355,42 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         geom.setLocalTranslation(-ballRadius, -ballRadius, 0);
 
         Node node = new Node("BallNode");
-        node.addControl(new BodyControl(body));
+        BodyControl control = new BodyControl(body);
+        geom.setUserData("bodyControl", control);
+        node.addControl(control);
         node.attachChild(geom);
 
         rootNode.attachChild(node);
     }
 
+    private void createBar() {
+
+    }
+
     private void createHUD() {
-        // Quad readyButtonMesh = new Quad(100/PPM,33/PPM);
-        // Material readyButtonMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        // readyButtonMat.setColor("Color", ColorRGBA.Red);
-        // Geometry readyButtonGeom = new Geometry("ReadyButton", readyButtonMesh);
-        // readyButtonGeom.setMaterial(readyButtonMat);
-        // readyButtonGeom.setLocalTranslation(-625/PPM,260/PPM, 0);
-        //
-        //
-        //
-        // rootNode.attachChild(readyButtonGeom);
-        //
-        // Quad oppoReadyButtonMesh = new Quad(100 / PPM, 33 / PPM);
-        // Material oppoReadyButtonMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        // oppoReadyButtonMat.setColor("Color", ColorRGBA.Blue);
-        // Geometry oppoReadyButtonGeom = new Geometry("OpponentReadyButton", oppoReadyButtonMesh);
-        // oppoReadyButtonGeom.setMaterial(oppoReadyButtonMat);
-        // oppoReadyButtonGeom.setLocalTranslation(525/PPM,260/PPM, 0);
-        // rootNode.attachChild(oppoReadyButtonGeom);
         Container myWindow = new Container();
         guiNode.attachChild(myWindow);
 
         myWindow.setLocalTranslation(30, 650, 0);
-
         myWindow.addChild(new Label("Hello,World."));
 
         Button clickMe = myWindow.addChild(new Button("Click Me"));
         clickMe.addClickCommands(new Command<Button>() {
             @Override
             public void execute(Button source) {
+                for (Map.Entry<String, Force> entry : action.entrySet()) {
+                    BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
+                    bodyCtrl.body.applyForce(entry.getValue());
 
+                }
+                action.clear();
             }
         });
 
 
+    }
+
+    private enum GameState {
+        READY, WAITING, RUNNING, SCORE
     }
 }
