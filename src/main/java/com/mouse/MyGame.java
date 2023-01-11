@@ -80,15 +80,14 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     @Override
     public void onAction(String name, boolean isPressed, float tpf) {
         if (name.equals("LeftClick")) {
+            Vector2f click2D = inputManager.getCursorPosition();
+            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
             if (isPressed) {
-                Vector2f click2D = inputManager.getCursorPosition();
-                Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-                Vector3f direction = cam.getWorldCoordinates(click2D, 1)
+                // Collision detection
+                Vector3f rayDirection = cam.getWorldCoordinates(click2D, 1)
                         .subtractLocal(click3D).normalizeLocal();
-
-
                 CollisionResults results = new CollisionResults();
-                rootNode.collideWith(new Ray(click3D, direction), results);
+                rootNode.collideWith(new Ray(click3D, rayDirection), results);
                 if (results.size() > 0) {
                     Spatial spatial = results.getClosestCollision().getGeometry();
                     if (spatial.getName().equals("Player")) {
@@ -97,15 +96,15 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 }
             } else {
                 if (selectedPlayer != null) {
-                    Vector2f click2D = inputManager.getCursorPosition();
-                    Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
                     Vector2 player2D = selectedPlayer.body.getWorldCenter();
                     Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
+
                     Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
                     Vector3f direction = newClick3D.subtract(player3D);
-                    System.out.println(direction.length());
-
-                    selectedPlayer.body.applyForce(new Vector2(direction.x * direction.length() * 40, direction.y * direction.length() * 40));
+                    selectedPlayer.body.applyForce(new Vector2(
+                            direction.x * direction.length() * 40,
+                            direction.y * direction.length() * 40)
+                    );
                     selectedPlayer = null;
                 }
             }
@@ -126,7 +125,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
             cursorAngle *= direction.x > 0 ? -1 : 1;
             selectedPlayer.body.rotateAboutCenter(cursorAngle - playerAngle);
-
         }
     }
 
@@ -218,6 +216,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         final float triangleSize = 20 / PPM;
         final float rectHeight = 10 / PPM;
 
+        // Create body for the player
         Body body = new Body();
         BodyFixture fixture = body.addFixture(new Circle(playerRadius));
         fixture.setRestitution(0.05);
@@ -227,47 +226,48 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         body.translate(-100 / PPM, -60 / PPM);
         world.addBody(body);
 
-        Sphere sphere = new Sphere(32, 32, playerRadius);
-        Quad triangle = new Quad(triangleSize, triangleSize);
-        Quad frontRect = new Quad(playerRadius * 2, rectHeight);
-        Quad backRect = new Quad(playerRadius * 2, rectHeight);
+        // Create player
+        Sphere playerMesh = new Sphere(32, 32, playerRadius);
+        Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        playerMat.setColor("Color", ColorRGBA.Blue);
+        Geometry playerGeom = new Geometry("Player", playerMesh);
+        playerGeom.setMaterial(playerMat);
 
-        Material mat1 = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        mat1.setColor("Color", ColorRGBA.Blue);
-        Geometry geom = new Geometry("Player", sphere);
-        geom.setMaterial(mat1);
+        // Create a small triangle indicating the direction of player
+        Quad directMesh = new Quad(triangleSize, triangleSize);
+        Texture directTex = assetManager.loadTexture("Textures/triangle.png");
+        Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        directMat.setTexture("ColorMap", directTex);
+        directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        Geometry directGeom = new Geometry("Triangle", directMesh);
+        directGeom.setMaterial(directMat);
+        directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
 
-        Texture tex = assetManager.loadTexture("Textures/triangle.png");
-        Material mat2 = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        mat2.setTexture("ColorMap", tex);
-        mat2.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-        Geometry directCtrl = new Geometry("Triangle", triangle);
-        directCtrl.setMaterial(mat2);
-        directCtrl.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
+        // Create the charge bar - background
+        Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
+        Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        chargeBarBgMat.setColor("Color", ColorRGBA.White);
+        Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground", chargeBarBgMesh);
+        chargeBarBgGeom.setMaterial(chargeBarBgMat);
+        chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+        // Create the charge bar - percentage
+        Quad chargeBarMesh = new Quad(playerRadius * 2, rectHeight);
+        Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        chargeBarMat.setColor("Color", ColorRGBA.Blue);
+        Geometry chargeBarGeom = new Geometry("ChargeBar", chargeBarMesh);
+        chargeBarGeom.setMaterial(chargeBarMat);
+        chargeBarGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
         Node node = new Node("PlayerNode");
         BodyControl control = new BodyControl(body);
-        geom.setUserData("bodyControl", control);
-
-        Material forceCtrlBaseMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        forceCtrlBaseMat.setColor("Color", ColorRGBA.Blue);
-        Geometry forceCtrlBase = new Geometry("ForceB", backRect);
-        forceCtrlBaseMat.setColor("Color", ColorRGBA.White);
-        forceCtrlBase.setMaterial(forceCtrlBaseMat);
-
-        Material forceCtrlMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        forceCtrlMat.setColor("Color", ColorRGBA.Blue);
-        Geometry forceCtrl = new Geometry("Force", frontRect);
-        forceCtrl.setMaterial(forceCtrlMat);
-        forceCtrl.move(-playerRadius, -playerRadius - 20 / PPM, 0);
-        forceCtrlBase.move(-playerRadius, -playerRadius - 20 / PPM, 0);
-
-        geom.setUserData("rect", forceCtrl);
+        playerGeom.setUserData("bodyControl", control);
 
         node.addControl(control);
-        node.attachChild(geom);
-        node.attachChild(directCtrl);
-        node.attachChild(forceCtrl);
-        node.attachChild(forceCtrlBase);
+        node.attachChild(playerGeom);
+        node.attachChild(directGeom);
+        node.attachChild(chargeBarBgGeom);
+        node.attachChild(chargeBarGeom);
 
         rootNode.attachChild(node);
     }
@@ -285,17 +285,16 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         body.translate(0 / PPM, -60 / PPM);
         world.addBody(body);
 
+        Quad quad = new Quad(ballRadius * 2, ballRadius * 2);
         Texture tex = assetManager.loadTexture("Textures/football.png");
         Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         mat.setTexture("ColorMap", tex);
         mat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-
-        Quad quad = new Quad(ballRadius * 2, ballRadius * 2);
-        Geometry geom = new Geometry("body", quad);
+        Geometry geom = new Geometry("Ball", quad);
         geom.setMaterial(mat);
         geom.setLocalTranslation(-ballRadius, -ballRadius, 0);
 
-        Node node = new Node("Ball");
+        Node node = new Node("BallNode");
         node.addControl(new BodyControl(body));
         node.attachChild(geom);
 
