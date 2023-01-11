@@ -13,14 +13,12 @@ import com.jme3.math.Ray;
 import com.jme3.math.Vector2f;
 import com.jme3.math.Vector3f;
 import com.jme3.renderer.RenderManager;
-import com.jme3.scene.Geometry;
-import com.jme3.scene.Node;
-import com.jme3.scene.Spatial;
-import com.jme3.scene.shape.Line;
+import com.jme3.scene.*;
 import com.jme3.scene.shape.Quad;
 import com.jme3.scene.shape.Sphere;
 import com.jme3.system.AppSettings;
 import com.jme3.texture.Texture;
+import com.jme3.util.BufferUtils;
 import org.dyn4j.dynamics.Body;
 import org.dyn4j.dynamics.BodyFixture;
 import org.dyn4j.geometry.Circle;
@@ -32,7 +30,7 @@ import org.dyn4j.world.World;
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
     private final World<Body> world = new World<>();
     private BodyControl selectedPlayer;
-    private Geometry lineGeom;
+    private Geometry directGeom;
     private static final float PPM = 100;
 
     public static void main(String[] args) {
@@ -98,7 +96,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 }
             } else {
                 if (selectedPlayer != null) {
-                    selectedPlayer.body.applyForce(new Vector2(100, 10));
+                    // selectedPlayer.body.applyForce(new Vector2(100, 10));
                     selectedPlayer = null;
                 }
             }
@@ -108,18 +106,32 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     @Override
     public void onAnalog(String name, float value, float tpf) {
         if (name.equals("LeftClick") && selectedPlayer != null) {
-            if (lineGeom != null) lineGeom.removeFromParent();
+            if (directGeom != null) directGeom.removeFromParent();
             Vector2f click2D = inputManager.getCursorPosition();
             Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-            Vector2 playerCenter2D = selectedPlayer.body.getWorldCenter();
+            Vector2 player2D = selectedPlayer.body.getWorldCenter();
+            Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
 
-            Line line = new Line(new Vector3f((float) playerCenter2D.x, (float) playerCenter2D.y, 0), click3D);
-            lineGeom = new Geometry("Line", line);
+            Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
+            Vector3f direction = newClick3D.subtract(player3D).normalize().divide(10);
+
+            // Custom mesh for creating triangles
+            Mesh mesh = new Mesh();
+            Vector3f[] vertices = new Vector3f[3];
+            vertices[0] = click3D;
+            vertices[1] = new Vector3f(player3D.x - direction.y, player3D.y + direction.x, 0);
+            vertices[2] = new Vector3f(player3D.x + direction.y, player3D.y - direction.x, 0);
+            int[] indices = new int[]{0, 1, 2};
+            mesh.setBuffer(VertexBuffer.Type.Position, 3, BufferUtils.createFloatBuffer(vertices));
+            mesh.setBuffer(VertexBuffer.Type.Index, 3, BufferUtils.createIntBuffer(indices));
+            mesh.updateBound();
+            mesh.setStatic();
+
+            directGeom = new Geometry("Direction", mesh);
             Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             mat.setColor("Color", ColorRGBA.Blue);
-            mat.getAdditionalRenderState().setLineWidth(500);
-            lineGeom.setMaterial(mat);
-            rootNode.attachChild(lineGeom);
+            directGeom.setMaterial(mat);
+            rootNode.attachChild(directGeom);
         }
     }
 
