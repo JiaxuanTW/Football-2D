@@ -36,7 +36,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
     private final World<Body> world = new World<>();
     Map<String, Force> action = new HashMap<>();
@@ -154,6 +153,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                             direction.x * power,
                             direction.y * power
                     ));
+                    createBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
 
                     // selectedPlayer.body.applyForce(new Vector2(
                     //         direction.x * direction.length() * 40,
@@ -201,21 +201,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         directGeom.setMaterial(directMat);
         directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
 
-        // Create the charge bar - background
-        Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
-        Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        chargeBarBgMat.setColor("Color", ColorRGBA.White);
-        Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground", chargeBarBgMesh);
-        chargeBarBgGeom.setMaterial(chargeBarBgMat);
-        chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
-
-        // Create the charge bar - percentage
-        Quad chargeBarMesh = new Quad(playerRadius * 2, rectHeight);
-        Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        chargeBarMat.setColor("Color", ColorRGBA.Blue);
-        Geometry chargeBarGeom = new Geometry("ChargeBar", chargeBarMesh);
-        chargeBarGeom.setMaterial(chargeBarMat);
-        chargeBarGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
 
         Node node = new Node("PlayerNode");
         BodyControl control = new BodyControl(body);
@@ -241,11 +226,25 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
 
             Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
-            Vector3f direction = newClick3D.subtract(player3D).normalize();
+
+
+            Vector3f direction = newClick3D.subtract(player3D);
+            double power = 50 * (direction.length() > 5 ? 5 : direction.length());
+            System.out.println(power);
+            direction.normalizeLocal();
+            action.put(selectedPlayer.getName(), new Force(
+                    direction.x * power,
+                    direction.y * power
+            ));
+            createBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
+
+            direction.normalizeLocal();
             double playerAngle = bodyCtrl.body.getTransform().getRotationAngle();
             float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
             cursorAngle *= direction.x > 0 ? -1 : 1;
             bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
+
+
         }
     }
 
@@ -258,6 +257,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         material.setTexture("ColorMap", texture);
         background.setMaterial(material);
         rootNode.attachChild(background);
+        System.out.println(rootNode.getChildIndex(background));
     }
 
     private void createBoundaries() {
@@ -363,7 +363,41 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         rootNode.attachChild(node);
     }
 
-    private void createBar() {
+    private void createBar(String name, double power, Vector3f pos) {
+        Geometry oldChargeBar = (Geometry) rootNode.getChild("ChargeBar-" + name);
+        final float playerRadius = 35 / PPM;
+        final float rectHeight = 10 / PPM;
+        if (oldChargeBar == null) {
+
+            // Create the charge bar - background
+            Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
+            Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+            chargeBarBgMat.setColor("Color", ColorRGBA.White);
+            Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground-" + name, chargeBarBgMesh);
+            chargeBarBgGeom.setMaterial(chargeBarBgMat);
+            chargeBarBgGeom.setLocalTranslation(pos);
+            chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+            // Create the charge bar - percentage
+            Quad chargeBarMesh = new Quad(playerRadius * 2f * (float) power / 250f, rectHeight);
+            Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+            chargeBarMat.setColor("Color", ColorRGBA.Blue);
+            Geometry chargeBarGeom = new Geometry("ChargeBar-" + name, chargeBarMesh);
+            chargeBarGeom.setMaterial(chargeBarMat);
+            chargeBarGeom.setLocalTranslation(pos);
+            chargeBarGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
+
+            rootNode.attachChildAt(chargeBarGeom, 1);
+            rootNode.attachChildAt(chargeBarBgGeom, 1);
+
+            return;
+        }
+        Quad q = (Quad) oldChargeBar.getMesh();
+        q.updateGeometry(playerRadius * 2f * (float) power / 250f, rectHeight);
+        q.updateCounts();
+        oldChargeBar.updateGeometricState();
+        oldChargeBar.updateModelBound();
+
 
     }
 
