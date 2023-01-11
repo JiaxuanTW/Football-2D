@@ -22,7 +22,9 @@ import com.jme3.scene.shape.Quad;
 import com.jme3.scene.shape.Sphere;
 import com.jme3.system.AppSettings;
 import com.jme3.texture.Texture;
-import com.simsilica.lemur.*;
+import com.simsilica.lemur.Button;
+import com.simsilica.lemur.Container;
+import com.simsilica.lemur.GuiGlobals;
 import org.dyn4j.dynamics.Body;
 import org.dyn4j.dynamics.BodyFixture;
 import org.dyn4j.dynamics.Force;
@@ -31,59 +33,25 @@ import org.dyn4j.geometry.MassType;
 import org.dyn4j.geometry.Rectangle;
 import org.dyn4j.geometry.Vector2;
 import org.dyn4j.world.World;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.Map;
 
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
-    private final World<Body> world = new World<>();
-    Map<String, Force> action = new HashMap<>();
+    private static final float POWER_LIMIT = 5;
+
     private static final float PPM = 100;
+    private static final float POWER_MULTIPLIER = 50;
+    private final World<Body> world = new World<>();
+    Map<String, Force> forces = new HashMap<>();
     private Spatial selectedPlayer;
-    //-------------------------------------------------------------------------------------------------------------//
-    private String ally = "B"; // Blue, Red, None
-    private int bScore = 0;
-    private int rScore = 0;
-    private int turns = 1;
+    private String myTeamColor = "B"; // B(Blue), R(Red), N(None)
+    private int blueScore = 0;
+    private int redScore = 0;
+    private int turns = 0;
 
-    @Override
-    public void simpleInitApp() {
-        cam.setParallelProjection(true);
-        cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
-        cam.setFrustum(-1000, 1000,
-                -cam.getWidth() / PPM / 2,
-                cam.getWidth() / PPM / 2,
-                cam.getHeight() / PPM / 2,
-                -cam.getHeight() / PPM / 2);
-        getFlyByCamera().setEnabled(false);
-
-        setDisplayStatView(false);
-        setDisplayFps(false);
-
-        // Init Lemur GUI
-        GuiGlobals.initialize(this);
-
-
-        createBackground();
-        createBoundaries();
-        createPlayers("Player-B1", ColorRGBA.Blue, -200, 80);
-        createPlayers("Player-B2", ColorRGBA.Blue, -150, -60);
-        createPlayers("Player-B3", ColorRGBA.Blue, -200, -200);
-        createPlayers("Player-R1", ColorRGBA.Red, 200, 80);
-        createPlayers("Player-R2", ColorRGBA.Red, 150, -60);
-        createPlayers("Player-R3", ColorRGBA.Red, 200, -200);
-        createBall();
-        createHUD();
-        setText(bScore, rScore);
-
-        inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
-        inputManager.addListener(this, "LeftClick");
-
-        world.setGravity(World.ZERO_GRAVITY);
-    }
-
-    //----------------------------------------------------------------------------------------------------------//
     public static void main(String[] args) {
         MyGame app = new MyGame();
         AppSettings settings = new AppSettings(true);
@@ -94,74 +62,54 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         app.start();
     }
 
-    private void setText(int bs, int rs) {
-        BitmapFont font = assetManager.loadFont("Interface/default.fnt");
-        BitmapText text = new BitmapText(font);
-        text.setText("12");
-        text.setSize(55f);
-        text.setColor(ColorRGBA.Black);
-        text.setLocalTranslation(380, 670, 0);
-        guiNode.attachChild(text);
+    @Override
+    public void simpleInitApp() {
+        // Set up camera
+        cam.setParallelProjection(true);
+        cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
+        cam.setFrustum(-1000, 1000,
+                -cam.getWidth() / PPM / 2,
+                cam.getWidth() / PPM / 2,
+                cam.getHeight() / PPM / 2,
+                -cam.getHeight() / PPM / 2);
+        getFlyByCamera().setEnabled(false);
+
+        // Remove debug info
+        setDisplayStatView(false);
+        setDisplayFps(false);
+
+        // Init Lemur GUI
+        GuiGlobals.initialize(this);
+
+        // Create objects
+        createBackground();
+        createBoundaries();
+        createPlayers("Player-B1", ColorRGBA.Blue, -200, 80);
+        createPlayers("Player-B2", ColorRGBA.Blue, -150, -60);
+        createPlayers("Player-B3", ColorRGBA.Blue, -200, -200);
+        createPlayers("Player-R1", ColorRGBA.Red, 200, 80);
+        createPlayers("Player-R2", ColorRGBA.Red, 150, -60);
+        createPlayers("Player-R3", ColorRGBA.Red, 200, -200);
+        createBall();
+        createHUD();
+        createText(blueScore, redScore);
+
+        // Register input listeners
+        inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        inputManager.addListener(this, "LeftClick");
+
+        // Set gravity to zero
+        world.setGravity(World.ZERO_GRAVITY);
     }
 
     @Override
     public void simpleUpdate(float tpf) {
         world.update(tpf);
-        Boolean stop = true;
 
-        BodyControl obj = rootNode.getChild("Ball").getUserData("bodyControl");
-        if (!obj.body.getLinearVelocity().equals(new Vector2(0, 0))) {
-            stop = false;
-        }
-
-    }
-
-    @Override
-    public void onAction(String name, boolean isPressed, float tpf) {
-        if (name.equals("LeftClick")) {
-            Vector2f click2D = inputManager.getCursorPosition();
-            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-            if (isPressed) {
-                // Collision detection
-                Vector3f rayDirection = cam.getWorldCoordinates(click2D, 1)
-                        .subtractLocal(click3D).normalizeLocal();
-                CollisionResults results = new CollisionResults();
-                rootNode.collideWith(new Ray(click3D, rayDirection), results);
-                if (results.size() > 0) {
-                    Spatial spatial = results.getClosestCollision().getGeometry();
-                    System.out.println(spatial.getName());
-                    if (spatial.getName().startsWith("Player-" + ally)) {
-                        selectedPlayer = spatial;
-                    }
-                }
-            } else {
-                if (selectedPlayer != null) {
-                    BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
-                    Vector2 player2D = bodyCtrl.body.getWorldCenter();
-                    Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
-
-                    Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
-                    Vector3f direction = newClick3D.subtract(player3D);
-
-                    // Saving pre_executed Force into "move" map with player's name
-
-                    System.out.println(direction.length());
-                    double power = 50 * (direction.length() > 5 ? 5 : direction.length());
-                    System.out.println(power);
-                    direction.normalizeLocal();
-                    action.put(selectedPlayer.getName(), new Force(
-                            direction.x * power,
-                            direction.y * power
-                    ));
-                    createBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
-
-                    // selectedPlayer.body.applyForce(new Vector2(
-                    //         direction.x * direction.length() * 40,
-                    //         direction.y * direction.length() * 40)
-                    // );
-                    selectedPlayer = null;
-                }
-            }
+        // TODO: Goal detection
+        // TODO: If every object stops moving -> change game state
+        BodyControl ball = rootNode.getChild("Ball").getUserData("bodyControl");
+        if (!ball.body.getLinearVelocity().equals(new Vector2(0, 0))) {
         }
     }
 
@@ -169,12 +117,91 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     public void simpleRender(RenderManager rm) {
     }
 
+    @Override
+    public void onAction(@NotNull String name, boolean isPressed, float tpf) {
+        if (name.equals("LeftClick")) {
+            // Get the cursor position and translate it to the world coordinates
+            Vector2f click2D = inputManager.getCursorPosition();
+            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
+            if (isPressed) {
+                // Use left mouse click to select a player
+                // Collision detection for selecting a player
+                Vector3f rayDirection = cam.getWorldCoordinates(click2D, 1)
+                        .subtractLocal(click3D).normalizeLocal();
+                CollisionResults results = new CollisionResults();
+                rootNode.collideWith(new Ray(click3D, rayDirection), results);
+                if (results.size() > 0) {
+                    Spatial spatial = results.getClosestCollision().getGeometry();
+                    if (spatial.getName().startsWith("Player-" + myTeamColor)) {
+                        // Can only select the players on your team
+                        selectedPlayer = spatial;
+                    }
+                }
+            } else if (selectedPlayer != null) { // If mouse click released and a player is selected
+                // Get the position of the selected player and translate it to the world coordinates
+                BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
+                Vector2 player2D = bodyCtrl.body.getWorldCenter();
+                Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
+                Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0); // Set z-value to zero
+                Vector3f direction = newClick3D.subtract(player3D);
+
+                // Charge the power by dragging the mouse
+                // Get higher power if dragging farther from the center of the selected player
+                double power = (Math.min(direction.length(), POWER_LIMIT)) * POWER_MULTIPLIER;
+                direction.normalizeLocal(); // Normalize the direction vector and multiply by power value
+
+                // Store the force of players into a map
+                // After both users set up the forces of players and get ready -> apply the forces to the players
+                forces.put(selectedPlayer.getName(), new Force(
+                        direction.x * power,
+                        direction.y * power
+                ));
+
+                // Update the charge bar
+                displayChargeBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
+                selectedPlayer = null; // Deselect the player when mouse click released
+            }
+        }
+    }
+
+    @Override
+    public void onAnalog(String name, float value, float tpf) {
+        if (name.equals("LeftClick") && selectedPlayer != null) {
+            // If the mouse is on dragging and a player is selected
+            // A player is selected by a left click (See onAction() method)
+
+            // Get the position of the cursor and the selected player
+            Vector2f click2D = inputManager.getCursorPosition();
+            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
+            BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
+            Vector2 player2D = bodyCtrl.body.getWorldCenter();
+            Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
+            Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0); // Set z-value to zero
+            Vector3f direction = newClick3D.subtract(player3D);
+
+            // Charge the power by dragging the mouse
+            double power = (Math.min(direction.length(), POWER_LIMIT)) * POWER_MULTIPLIER;
+            direction.normalizeLocal();
+            forces.put(selectedPlayer.getName(), new Force(
+                    direction.x * power,
+                    direction.y * power
+            ));
+
+            // Update the charge bar
+            displayChargeBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
+
+            // Rotate the player
+            double playerAngle = bodyCtrl.body.getTransform().getRotationAngle();
+            float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
+            cursorAngle *= direction.x > 0 ? -1 : 1;
+            bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
+        }
+    }
+
     private void createPlayers(String name, ColorRGBA color, float posX, float posY) {
         final float playerRadius = 35 / PPM;
         final float triangleSize = 20 / PPM;
-        final float rectHeight = 10 / PPM;
 
-        // Create body for the player
         Body body = new Body();
         BodyFixture fixture = body.addFixture(new Circle(playerRadius));
         fixture.setRestitution(0.05);
@@ -184,14 +211,13 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         body.translate(posX / PPM, posY / PPM);
         world.addBody(body);
 
-        // Create player
         Sphere playerMesh = new Sphere(32, 32, playerRadius);
         Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         playerMat.setColor("Color", color);
         Geometry playerGeom = new Geometry(name, playerMesh);
         playerGeom.setMaterial(playerMat);
 
-        // Create a small triangle indicating the direction of player
+        // Create a small triangle indicating the direction of a player
         Quad directMesh = new Quad(triangleSize, triangleSize);
         Texture directTex = assetManager.loadTexture("Textures/triangle.png");
         Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -201,63 +227,49 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         directGeom.setMaterial(directMat);
         directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
 
-
         Node node = new Node("PlayerNode");
         BodyControl control = new BodyControl(body);
         playerGeom.setUserData("bodyControl", control);
-
         node.addControl(control);
         node.attachChild(playerGeom);
         node.attachChild(directGeom);
-        // node.attachChild(chargeBarBgGeom);
-        // node.attachChild(chargeBarGeom);
 
         rootNode.attachChild(node);
     }
 
-    @Override
-    public void onAnalog(String name, float value, float tpf) {
-        if (name.equals("LeftClick") && selectedPlayer != null) {
-            BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
-
-            Vector2f click2D = inputManager.getCursorPosition();
-            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-            Vector2 player2D = bodyCtrl.body.getWorldCenter();
-            Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
-
-            Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0);
-
-
-            Vector3f direction = newClick3D.subtract(player3D);
-            double power = 50 * (direction.length() > 5 ? 5 : direction.length());
-            System.out.println(power);
-            direction.normalizeLocal();
-            action.put(selectedPlayer.getName(), new Force(
-                    direction.x * power,
-                    direction.y * power
-            ));
-            createBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
-
-            direction.normalizeLocal();
-            double playerAngle = bodyCtrl.body.getTransform().getRotationAngle();
-            float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
-            cursorAngle *= direction.x > 0 ? -1 : 1;
-            bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
-
-
-        }
-    }
-
     private void createBackground() {
-        Quad plane = new Quad(cam.getWidth() / PPM, cam.getHeight() / PPM);
-        Geometry background = new Geometry("Background", plane);
+        Quad quad = new Quad(cam.getWidth() / PPM, cam.getHeight() / PPM);
+        Geometry background = new Geometry("Background", quad);
         background.center();
         Texture texture = assetManager.loadTexture("Textures/background.png");
         Material material = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         material.setTexture("ColorMap", texture);
         background.setMaterial(material);
         rootNode.attachChild(background);
-        System.out.println(rootNode.getChildIndex(background));
+    }
+
+    private void createHUD() {
+        Container container = new Container();
+        container.setLocalTranslation(30, 650, 0);
+        guiNode.attachChild(container);
+
+        Button clickMe = container.addChild(new Button("READY"));
+        clickMe.addClickCommands(source -> {
+            // If the button is clicked -> Apply forces to each player
+            for (Map.Entry<String, Force> entry : forces.entrySet()) {
+                BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
+                bodyCtrl.body.applyForce(entry.getValue());
+            }
+            forces.clear(); // Clear the forces map
+
+            // TODO: Remove charge bar (Do it in RUNNING state)
+            rootNode.detachChildNamed("ChargeBar-Player-B1");
+            rootNode.detachChildNamed("ChargeBar-Player-B2");
+            rootNode.detachChildNamed("ChargeBar-Player-B3");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B1");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B2");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B3");
+        });
     }
 
     private void createBoundaries() {
@@ -363,17 +375,29 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         rootNode.attachChild(node);
     }
 
-    private void createBar(String name, double power, Vector3f pos) {
-        Geometry oldChargeBar = (Geometry) rootNode.getChild("ChargeBar-" + name);
+    private void createText(int blueScore, int redScore) {
+        BitmapFont font = assetManager.loadFont("Interface/Fonts/Default.fnt");
+        BitmapText text = new BitmapText(font);
+        text.setText(String.valueOf(blueScore));
+        text.setSize(55f);
+        text.setColor(ColorRGBA.Black);
+        text.setLocalTranslation(380, 670, 0);
+        guiNode.attachChild(text);
+    }
+
+    private void displayChargeBar(String name, double power, Vector3f pos) {
         final float playerRadius = 35 / PPM;
         final float rectHeight = 10 / PPM;
-        if (oldChargeBar == null) {
 
+        // Try to get charge bar from rootNode and update the width (the percentage of power)
+        Geometry oldChargeBar = (Geometry) rootNode.getChild("ChargeBar-" + name);
+        // If the charge bar has not created -> Create one
+        if (oldChargeBar == null) {
             // Create the charge bar - background
             Quad chargeBarBgMesh = new Quad(playerRadius * 2, rectHeight);
             Material chargeBarBgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             chargeBarBgMat.setColor("Color", ColorRGBA.White);
-            Geometry chargeBarBgGeom = new Geometry("ChargeBarBackground-" + name, chargeBarBgMesh);
+            Geometry chargeBarBgGeom = new Geometry("ChargeBarBg-" + name, chargeBarBgMesh);
             chargeBarBgGeom.setMaterial(chargeBarBgMat);
             chargeBarBgGeom.setLocalTranslation(pos);
             chargeBarBgGeom.move(-playerRadius, -playerRadius - 20 / PPM, 0);
@@ -389,39 +413,15 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
             rootNode.attachChildAt(chargeBarGeom, 1);
             rootNode.attachChildAt(chargeBarBgGeom, 1);
-
             return;
         }
+
+        // Update the charge bar
         Quad q = (Quad) oldChargeBar.getMesh();
         q.updateGeometry(playerRadius * 2f * (float) power / 250f, rectHeight);
         q.updateCounts();
         oldChargeBar.updateGeometricState();
         oldChargeBar.updateModelBound();
-
-
-    }
-
-    private void createHUD() {
-        Container myWindow = new Container();
-        guiNode.attachChild(myWindow);
-
-        myWindow.setLocalTranslation(30, 650, 0);
-        myWindow.addChild(new Label("Hello,World."));
-
-        Button clickMe = myWindow.addChild(new Button("Click Me"));
-        clickMe.addClickCommands(new Command<Button>() {
-            @Override
-            public void execute(Button source) {
-                for (Map.Entry<String, Force> entry : action.entrySet()) {
-                    BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
-                    bodyCtrl.body.applyForce(entry.getValue());
-
-                }
-                action.clear();
-            }
-        });
-
-
     }
 
     private enum GameState {
