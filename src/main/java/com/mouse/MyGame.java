@@ -40,13 +40,16 @@ import java.util.Map;
 
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
-    private static final float POWER_LIMIT = 5;
+    private enum GameState {
+        READY, WAITING, RUNNING, SCORE
+    }
 
     private static final float PPM = 100;
+    private static final float POWER_LIMIT = 5;
     private static final float POWER_MULTIPLIER = 50;
     private final World<Body> world = new World<>();
-    Map<String, Force> forces = new HashMap<>();
     private Spatial selectedPlayer;
+    private Map<String, Force> forces = new HashMap<>();
     private String myTeamColor = "B"; // B(Blue), R(Red), N(None)
     private int blueScore = 0;
     private int redScore = 0;
@@ -84,12 +87,12 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         // Create objects
         createBackground();
         createBoundaries();
-        createPlayers("Player-B1", ColorRGBA.Blue, -200, 80);
-        createPlayers("Player-B2", ColorRGBA.Blue, -150, -60);
-        createPlayers("Player-B3", ColorRGBA.Blue, -200, -200);
-        createPlayers("Player-R1", ColorRGBA.Red, 200, 80);
-        createPlayers("Player-R2", ColorRGBA.Red, 150, -60);
-        createPlayers("Player-R3", ColorRGBA.Red, 200, -200);
+        createPlayer("Player-B1", ColorRGBA.Blue, -200, 80);
+        createPlayer("Player-B2", ColorRGBA.Blue, -150, -60);
+        createPlayer("Player-B3", ColorRGBA.Blue, -200, -200);
+        createPlayer("Player-R1", ColorRGBA.Red, 200, 80);
+        createPlayer("Player-R2", ColorRGBA.Red, 150, -60);
+        createPlayer("Player-R3", ColorRGBA.Red, 200, -200);
         createBall();
         createHUD();
         createText(blueScore, redScore);
@@ -198,45 +201,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         }
     }
 
-    private void createPlayers(String name, ColorRGBA color, float posX, float posY) {
-        final float playerRadius = 35 / PPM;
-        final float triangleSize = 20 / PPM;
-
-        Body body = new Body();
-        BodyFixture fixture = body.addFixture(new Circle(playerRadius));
-        fixture.setRestitution(0.05);
-        body.setMass(MassType.NORMAL);
-        body.setLinearDamping(1);
-        body.setAngularDamping(Double.MAX_VALUE);
-        body.translate(posX / PPM, posY / PPM);
-        world.addBody(body);
-
-        Sphere playerMesh = new Sphere(32, 32, playerRadius);
-        Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        playerMat.setColor("Color", color);
-        Geometry playerGeom = new Geometry(name, playerMesh);
-        playerGeom.setMaterial(playerMat);
-
-        // Create a small triangle indicating the direction of a player
-        Quad directMesh = new Quad(triangleSize, triangleSize);
-        Texture directTex = assetManager.loadTexture("Textures/triangle.png");
-        Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        directMat.setTexture("ColorMap", directTex);
-        directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-        Geometry directGeom = new Geometry("Triangle", directMesh);
-        directGeom.setMaterial(directMat);
-        directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
-
-        Node node = new Node("PlayerNode");
-        BodyControl control = new BodyControl(body);
-        playerGeom.setUserData("bodyControl", control);
-        node.addControl(control);
-        node.attachChild(playerGeom);
-        node.attachChild(directGeom);
-
-        rootNode.attachChild(node);
-    }
-
     private void createBackground() {
         Quad quad = new Quad(cam.getWidth() / PPM, cam.getHeight() / PPM);
         Geometry background = new Geometry("Background", quad);
@@ -246,30 +210,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         material.setTexture("ColorMap", texture);
         background.setMaterial(material);
         rootNode.attachChild(background);
-    }
-
-    private void createHUD() {
-        Container container = new Container();
-        container.setLocalTranslation(30, 650, 0);
-        guiNode.attachChild(container);
-
-        Button clickMe = container.addChild(new Button("READY"));
-        clickMe.addClickCommands(source -> {
-            // If the button is clicked -> Apply forces to each player
-            for (Map.Entry<String, Force> entry : forces.entrySet()) {
-                BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
-                bodyCtrl.body.applyForce(entry.getValue());
-            }
-            forces.clear(); // Clear the forces map
-
-            // TODO: Remove charge bar (Do it in RUNNING state)
-            rootNode.detachChildNamed("ChargeBar-Player-B1");
-            rootNode.detachChildNamed("ChargeBar-Player-B2");
-            rootNode.detachChildNamed("ChargeBar-Player-B3");
-            rootNode.detachChildNamed("ChargeBarBg-Player-B1");
-            rootNode.detachChildNamed("ChargeBarBg-Player-B2");
-            rootNode.detachChildNamed("ChargeBarBg-Player-B3");
-        });
     }
 
     private void createBoundaries() {
@@ -344,6 +284,45 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         cornerBoundaries[3].translate(545 / PPM, -250 / PPM);
     }
 
+    private void createPlayer(String name, ColorRGBA color, float posX, float posY) {
+        final float playerRadius = 35 / PPM;
+        final float triangleSize = 20 / PPM;
+
+        Body body = new Body();
+        BodyFixture fixture = body.addFixture(new Circle(playerRadius));
+        fixture.setRestitution(0.05);
+        body.setMass(MassType.NORMAL);
+        body.setLinearDamping(1);
+        body.setAngularDamping(Double.MAX_VALUE);
+        body.translate(posX / PPM, posY / PPM);
+        world.addBody(body);
+
+        Sphere playerMesh = new Sphere(32, 32, playerRadius);
+        Material playerMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        playerMat.setColor("Color", color);
+        Geometry playerGeom = new Geometry(name, playerMesh);
+        playerGeom.setMaterial(playerMat);
+
+        // Create a small triangle indicating the direction of a player
+        Quad directMesh = new Quad(triangleSize, triangleSize);
+        Texture directTex = assetManager.loadTexture("Textures/triangle.png");
+        Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        directMat.setTexture("ColorMap", directTex);
+        directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        Geometry directGeom = new Geometry("Triangle", directMesh);
+        directGeom.setMaterial(directMat);
+        directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
+
+        Node node = new Node("PlayerNode");
+        BodyControl control = new BodyControl(body);
+        playerGeom.setUserData("bodyControl", control);
+        node.addControl(control);
+        node.attachChild(playerGeom);
+        node.attachChild(directGeom);
+
+        rootNode.attachChild(node);
+    }
+
     private void createBall() {
         final float ballRadius = 25f / PPM;
 
@@ -373,6 +352,30 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         node.attachChild(geom);
 
         rootNode.attachChild(node);
+    }
+
+    private void createHUD() {
+        Container container = new Container();
+        container.setLocalTranslation(30, 650, 0);
+        guiNode.attachChild(container);
+
+        Button clickMe = container.addChild(new Button("READY"));
+        clickMe.addClickCommands(source -> {
+            // If the button is clicked -> Apply forces to each player
+            for (Map.Entry<String, Force> entry : forces.entrySet()) {
+                BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
+                bodyCtrl.body.applyForce(entry.getValue());
+            }
+            forces.clear(); // Clear the forces map
+
+            // TODO: Remove charge bar (Do it in RUNNING state)
+            rootNode.detachChildNamed("ChargeBar-Player-B1");
+            rootNode.detachChildNamed("ChargeBar-Player-B2");
+            rootNode.detachChildNamed("ChargeBar-Player-B3");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B1");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B2");
+            rootNode.detachChildNamed("ChargeBarBg-Player-B3");
+        });
     }
 
     private void createText(int blueScore, int redScore) {
@@ -422,9 +425,5 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         q.updateCounts();
         oldChargeBar.updateGeometricState();
         oldChargeBar.updateModelBound();
-    }
-
-    private enum GameState {
-        READY, WAITING, RUNNING, SCORE
     }
 }
