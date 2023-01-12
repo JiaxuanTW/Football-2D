@@ -87,6 +87,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         // Create objects
         createBackground();
         createBoundaries();
+        createGoalArea();
         createPlayer("Player-B1", ColorRGBA.Blue, -200, 80);
         createPlayer("Player-B2", ColorRGBA.Blue, -150, -60);
         createPlayer("Player-B3", ColorRGBA.Blue, -200, -200);
@@ -109,11 +110,22 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     public void simpleUpdate(float tpf) {
         world.update(tpf);
 
+        Spatial ball = rootNode.getChild("Ball");
+        Spatial blueGoalArea = rootNode.getChild("GoalAreaBlue");
+        Spatial redGoalArea = rootNode.getChild("GoalAreaRed");
+
+        // Detect if the ball enters the goal
+        if (blueGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
+            System.out.println("Goal (Ball enters the Blue's goal)");
+        } else if (redGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
+            System.out.println("Goal (Ball enters the Red's goal)");
+        }
+
         // TODO: Goal detection
         // TODO: If every object stops moving -> change game state
-        BodyControl ball = rootNode.getChild("Ball").getUserData("bodyControl");
-        if (!ball.body.getLinearVelocity().equals(new Vector2(0, 0))) {
-        }
+        // BodyControl ball = rootNode.getChild("Ball").getUserData("bodyControl");
+        // if (!ball.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+        // }
     }
 
     @Override
@@ -282,6 +294,24 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         cornerBoundaries[1].translate(545 / PPM, 130 / PPM);
         cornerBoundaries[2].translate(-545 / PPM, -250 / PPM);
         cornerBoundaries[3].translate(545 / PPM, -250 / PPM);
+    }
+
+    private void createGoalArea() {
+        // Create the goal area on blue team
+        Quad blueGoalAreaMesh = new Quad(60 / PPM, 255 / PPM);
+        Material blueGoalAreaMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        Geometry blueGoalAreaGeom = new Geometry("GoalAreaBlue", blueGoalAreaMesh);
+        blueGoalAreaGeom.setMaterial(blueGoalAreaMat);
+        blueGoalAreaGeom.setLocalTranslation(-585 / PPM, -187.5f / PPM, 0 / PPM);
+        rootNode.attachChild(blueGoalAreaGeom);
+
+        // Create the goal area on red team
+        Quad redGoalAreaMesh = new Quad(60 / PPM, 255 / PPM);
+        Material redGoalAreaMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        Geometry redGoalAreaGeom = new Geometry("GoalAreaRed", redGoalAreaMesh);
+        redGoalAreaGeom.setMaterial(redGoalAreaMat);
+        redGoalAreaGeom.setLocalTranslation(525 / PPM, -187.5f / PPM, 0 / PPM);
+        rootNode.attachChild(redGoalAreaGeom);
     }
 
     private void createPlayer(String name, ColorRGBA color, float posX, float posY) {
