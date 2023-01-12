@@ -2,14 +2,11 @@ package com.mouse;
 
 import com.jme3.network.AbstractMessage;
 import com.jme3.network.serializing.Serializable;
-import org.dyn4j.dynamics.Force;
-
-import java.util.Map;
 
 @Serializable
 public class PlayerMessage extends AbstractMessage {
     private String command;
-    private Map<String, Force> forces;
+    private double[][] forcearray = new double[6][2];
 
 
     public PlayerMessage() {
@@ -21,13 +18,14 @@ public class PlayerMessage extends AbstractMessage {
 
     public PlayerMessage(String s, double[][] doubles) {
         command = s;
+        forcearray = doubles;
     }
 
     public String getCommand() {
         return command;
     }
 
-    public Map<String, Force> getForces() {
-        return forces;
+    public double[][] getForcearray() {
+        return forcearray;
     }
 }

@@ -58,6 +58,13 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     private int turns = 0;
     private double[][] forceArray = new double[6][2];
 
+    private final String[] nameArray = {"Player-B1",
+            "Player-B2",
+            "Player-B3",
+            "Player-R1",
+            "Player-R2",
+            "Player-R3"};
+
     public static void main(String[] args) {
 
 
@@ -140,10 +147,25 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             System.out.println("Goal (Ball enters the Red's goal)");
         }
 
-        // TODO: If every object stops moving -> change game state
-        BodyControl ballBodyCtrl = ball.getUserData("bodyControl");
-        if (!ballBodyCtrl.body.getLinearVelocity().equals(new Vector2(0, 0))) {
-            // If the ball stops
+        if (clickMe.getText().equals("Running")) {
+            boolean flag = false;
+            // TODO: If every object stops moving -> change game state
+            BodyControl ballBodyCtrl = ball.getUserData("bodyControl");
+            if (!ballBodyCtrl.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+                flag = true;
+            }
+            for (int i = 0; i < 6; i++) {
+                BodyControl obj = rootNode.getChild(nameArray[i]).getUserData("bodyControl");
+                if (!obj.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+                    flag = true;
+                }
+            }
+
+            if (!flag) {
+                Message message = new PlayerMessage("Stop");
+                message.setReliable(true);
+                myClient.send(message);
+            }
         }
     }
 
@@ -417,14 +439,15 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         clickMe = container.addChild(new Button("CONNECTING"));
         clickMe.setEnabled(false);
         clickMe.addClickCommands(source -> {
-            // If the button is clicked -> Apply forces to each player
-
-            // Message message = new PlayerMessage("Shot",forceArray);
-            // message.setReliable(true);
-
-            // myClient.send(message);
             clickMe.setEnabled(false);
             clickMe.setText("Waiting");
+            // If the button is clicked -> Apply forces to each player
+            ForcesToArray();
+            Message message = new PlayerMessage("Shot", forceArray);
+            message.setReliable(true);
+
+            myClient.send(message);
+
 
             // TODO: Remove charge bar (Do it in RUNNING state)
             rootNode.detachChildNamed("ChargeBar-Player-B1");
@@ -433,6 +456,12 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             rootNode.detachChildNamed("ChargeBarBg-Player-B1");
             rootNode.detachChildNamed("ChargeBarBg-Player-B2");
             rootNode.detachChildNamed("ChargeBarBg-Player-B3");
+            rootNode.detachChildNamed("ChargeBar-Player-R1");
+            rootNode.detachChildNamed("ChargeBar-Player-R2");
+            rootNode.detachChildNamed("ChargeBar-Player-R3");
+            rootNode.detachChildNamed("ChargeBarBg-Player-R1");
+            rootNode.detachChildNamed("ChargeBarBg-Player-R2");
+            rootNode.detachChildNamed("ChargeBarBg-Player-R3");
         });
     }
 
@@ -506,15 +535,74 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                     clickMe.setEnabled(true);
                 }
                 if (command.equals("Run")) {
-                    forces = helloMessage.getForces();
                     clickMe.setText("Running");
+                    forceArray = helloMessage.getForcearray();
+                    arrayToForcees();
                     for (Map.Entry<String, Force> entry : forces.entrySet()) {
                         BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
                         bodyCtrl.body.applyForce(entry.getValue());
                     }
+                    for (int i = 0; i < 6; i++) {
+                        for (int j = 0; j < 2; j++) {
+                            forceArray[i][j] = 0;
+                        }
+                    }
                     forces.clear(); // Clear the forces map
                 }
+                if (command.equals("Round")) {
+                    clickMe.setText("Ready");
+                    clickMe.setEnabled(true);
+                    turns++;
+                }
             } // else...
+        }
+    }
+
+    public void ForcesToArray() {
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 2; j++) {
+                forceArray[i][j] = 0;
+            }
+        }
+        for (Map.Entry<String, Force> entry : forces.entrySet()) {
+            String name = entry.getKey();
+            double x = entry.getValue().getForce().x;
+            double y = entry.getValue().getForce().y;
+            if (name.startsWith("Player-B")) {
+                if (name.endsWith("1")) {
+                    forceArray[0][0] = x;
+                    forceArray[0][1] = y;
+                }
+                if (name.endsWith("2")) {
+                    forceArray[1][0] = x;
+                    forceArray[1][1] = y;
+                }
+                if (name.endsWith("3")) {
+                    forceArray[2][0] = x;
+                    forceArray[2][1] = y;
+                }
+            } else if (entry.getKey().startsWith("Player-R")) {
+                if (name.endsWith("1")) {
+                    forceArray[3][0] = x;
+                    forceArray[3][1] = y;
+                }
+                if (name.endsWith("2")) {
+                    forceArray[4][0] = x;
+                    forceArray[4][1] = y;
+                }
+                if (name.endsWith("3")) {
+                    forceArray[5][0] = x;
+                    forceArray[5][1] = y;
+                }
+            }
+        }
+    }
+
+    public void arrayToForcees() {
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 2; j++) {
+                forces.put(nameArray[i], new Force(forceArray[i][0], forceArray[i][1]));
+            }
         }
     }
 
@@ -532,18 +620,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             System.out.println("Disconnect");
         }
 
-        public void ForcesToArray() {
-            for (Map.Entry<String, Force> entry : forces.entrySet()) {
-                String name = entry.getKey();
-                if (name.startsWith("Player-B")) {
-                    if (name.endsWith("1")) {
-                        System.out.println("1");
-                    }
 
-                } else if (entry.getKey().startsWith("Player-R")) {
-
-                }
-            }
-        }
     }
 }
