@@ -14,6 +14,8 @@ import com.jme3.math.ColorRGBA;
 import com.jme3.math.Ray;
 import com.jme3.math.Vector2f;
 import com.jme3.math.Vector3f;
+import com.jme3.network.*;
+import com.jme3.network.serializing.Serializer;
 import com.jme3.renderer.RenderManager;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
@@ -21,6 +23,7 @@ import com.jme3.scene.Spatial;
 import com.jme3.scene.shape.Quad;
 import com.jme3.scene.shape.Sphere;
 import com.jme3.system.AppSettings;
+import com.jme3.system.JmeContext;
 import com.jme3.texture.Texture;
 import com.simsilica.lemur.Button;
 import com.simsilica.lemur.Container;
@@ -35,38 +38,41 @@ import org.dyn4j.geometry.Vector2;
 import org.dyn4j.world.World;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
-    private enum GameState {
-        READY, WAITING, RUNNING, SCORE
-    }
-
+    Button clickMe;
+    Client myClient = null;
     private static final float PPM = 100;
     private static final float POWER_LIMIT = 5;
     private static final float POWER_MULTIPLIER = 50;
     private final World<Body> world = new World<>();
     private Spatial selectedPlayer;
     private Map<String, Force> forces = new HashMap<>();
-    private String myTeamColor = "B"; // B(Blue), R(Red), N(None)
+    private String myTeamColor = "N"; // B(Blue), R(Red), N(None)
     private int blueScore = 0;
     private int redScore = 0;
     private int turns = 0;
+    private double[][] forceArray = new double[6][2];
 
     public static void main(String[] args) {
+
+
         MyGame app = new MyGame();
         AppSettings settings = new AppSettings(true);
         settings.setResolution(1280, 720);
         settings.setTitle("2D Football Game");
         app.setSettings(settings);
         app.setShowSettings(false);
-        app.start();
+        app.start(JmeContext.Type.Display);
     }
 
     @Override
     public void simpleInitApp() {
+
         // Set up camera
         cam.setParallelProjection(true);
         cam.setLocation(new Vector3f(0 / PPM, 0 / PPM, 1 / PPM));
@@ -80,6 +86,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         // Remove debug info
         setDisplayStatView(false);
         setDisplayFps(false);
+
 
         // Init Lemur GUI
         GuiGlobals.initialize(this);
@@ -97,6 +104,18 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         createBall();
         createHUD();
         createText(blueScore, redScore);
+
+
+        try {
+            myClient = Network.connectToServer("localhost", 4234);
+            Serializer.registerClass(PlayerMessage.class);
+            myClient.start();
+            myClient.addMessageListener(new ClientListener(), PlayerMessage.class);
+            myClient.addClientStateListener(new CSL());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
 
         // Register input listeners
         inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
@@ -121,11 +140,11 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             System.out.println("Goal (Ball enters the Red's goal)");
         }
 
-        // TODO: Goal detection
         // TODO: If every object stops moving -> change game state
-        // BodyControl ball = rootNode.getChild("Ball").getUserData("bodyControl");
-        // if (!ball.body.getLinearVelocity().equals(new Vector2(0, 0))) {
-        // }
+        BodyControl ballBodyCtrl = ball.getUserData("bodyControl");
+        if (!ballBodyCtrl.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+            // If the ball stops
+        }
     }
 
     @Override
@@ -134,26 +153,64 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
     @Override
     public void onAction(@NotNull String name, boolean isPressed, float tpf) {
-        if (name.equals("LeftClick")) {
-            // Get the cursor position and translate it to the world coordinates
-            Vector2f click2D = inputManager.getCursorPosition();
-            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-            if (isPressed) {
-                // Use left mouse click to select a player
-                // Collision detection for selecting a player
-                Vector3f rayDirection = cam.getWorldCoordinates(click2D, 1)
-                        .subtractLocal(click3D).normalizeLocal();
-                CollisionResults results = new CollisionResults();
-                rootNode.collideWith(new Ray(click3D, rayDirection), results);
-                if (results.size() > 0) {
-                    Spatial spatial = results.getClosestCollision().getGeometry();
-                    if (spatial.getName().startsWith("Player-" + myTeamColor)) {
-                        // Can only select the players on your team
-                        selectedPlayer = spatial;
+        if (clickMe.getText().equals("Ready")) {
+            if (name.equals("LeftClick")) {
+                // Get the cursor position and translate it to the world coordinates
+                Vector2f click2D = inputManager.getCursorPosition();
+                Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
+                if (isPressed) {
+                    // Use left mouse click to select a player
+                    // Collision detection for selecting a player
+                    Vector3f rayDirection = cam.getWorldCoordinates(click2D, 1)
+                            .subtractLocal(click3D).normalizeLocal();
+                    CollisionResults results = new CollisionResults();
+                    rootNode.collideWith(new Ray(click3D, rayDirection), results);
+
+                    if (results.size() > 0) {
+                        Spatial spatial = results.getClosestCollision().getGeometry();
+                        if (spatial.getName().startsWith("Player-" + myTeamColor)) {
+                            // Can only select the players on your team
+                            selectedPlayer = spatial;
+                        }
                     }
+                } else if (selectedPlayer != null) { // If mouse click released and a player is selected
+                    // Get the position of the selected player and translate it to the world coordinates
+                    BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
+                    Vector2 player2D = bodyCtrl.body.getWorldCenter();
+                    Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
+                    Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0); // Set z-value to zero
+                    Vector3f direction = newClick3D.subtract(player3D);
+
+                    // Charge the power by dragging the mouse
+                    // Get higher power if dragging farther from the center of the selected player
+                    double power = (Math.min(direction.length(), POWER_LIMIT)) * POWER_MULTIPLIER;
+                    direction.normalizeLocal(); // Normalize the direction vector and multiply by power value
+
+                    // Store the force of players into a map
+                    // After both users set up the forces of players and get ready -> apply the forces to the players
+                    forces.put(selectedPlayer.getName(), new Force(
+                            direction.x * power,
+                            direction.y * power
+                    ));
+
+                    // Update the charge bar
+                    displayChargeBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
+                    selectedPlayer = null; // Deselect the player when mouse click released
                 }
-            } else if (selectedPlayer != null) { // If mouse click released and a player is selected
-                // Get the position of the selected player and translate it to the world coordinates
+            }
+        }
+    }
+
+    @Override
+    public void onAnalog(@NotNull String name, float value, float tpf) {
+        if (clickMe.getText().equals("Ready")) {
+            if (name.equals("LeftClick") && selectedPlayer != null) {
+                // If the mouse is on dragging and a player is selected
+                // A player is selected by a left click (See onAction() method)
+
+                // Get the position of the cursor and the selected player
+                Vector2f click2D = inputManager.getCursorPosition();
+                Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
                 BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
                 Vector2 player2D = bodyCtrl.body.getWorldCenter();
                 Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
@@ -161,12 +218,8 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 Vector3f direction = newClick3D.subtract(player3D);
 
                 // Charge the power by dragging the mouse
-                // Get higher power if dragging farther from the center of the selected player
                 double power = (Math.min(direction.length(), POWER_LIMIT)) * POWER_MULTIPLIER;
-                direction.normalizeLocal(); // Normalize the direction vector and multiply by power value
-
-                // Store the force of players into a map
-                // After both users set up the forces of players and get ready -> apply the forces to the players
+                direction.normalizeLocal();
                 forces.put(selectedPlayer.getName(), new Force(
                         direction.x * power,
                         direction.y * power
@@ -174,42 +227,13 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
                 // Update the charge bar
                 displayChargeBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
-                selectedPlayer = null; // Deselect the player when mouse click released
+
+                // Rotate the player
+                double playerAngle = bodyCtrl.body.getTransform().getRotationAngle();
+                float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
+                cursorAngle *= direction.x > 0 ? -1 : 1;
+                bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
             }
-        }
-    }
-
-    @Override
-    public void onAnalog(String name, float value, float tpf) {
-        if (name.equals("LeftClick") && selectedPlayer != null) {
-            // If the mouse is on dragging and a player is selected
-            // A player is selected by a left click (See onAction() method)
-
-            // Get the position of the cursor and the selected player
-            Vector2f click2D = inputManager.getCursorPosition();
-            Vector3f click3D = cam.getWorldCoordinates(click2D, 0);
-            BodyControl bodyCtrl = selectedPlayer.getUserData("bodyControl");
-            Vector2 player2D = bodyCtrl.body.getWorldCenter();
-            Vector3f player3D = new Vector3f((float) player2D.x, (float) player2D.y, 0);
-            Vector3f newClick3D = new Vector3f(click3D.x, click3D.y, 0); // Set z-value to zero
-            Vector3f direction = newClick3D.subtract(player3D);
-
-            // Charge the power by dragging the mouse
-            double power = (Math.min(direction.length(), POWER_LIMIT)) * POWER_MULTIPLIER;
-            direction.normalizeLocal();
-            forces.put(selectedPlayer.getName(), new Force(
-                    direction.x * power,
-                    direction.y * power
-            ));
-
-            // Update the charge bar
-            displayChargeBar(selectedPlayer.getName(), power, selectedPlayer.getWorldTranslation());
-
-            // Rotate the player
-            double playerAngle = bodyCtrl.body.getTransform().getRotationAngle();
-            float cursorAngle = direction.angleBetween(new Vector3f(0, 1, 0));
-            cursorAngle *= direction.x > 0 ? -1 : 1;
-            bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
         }
     }
 
@@ -389,14 +413,18 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         container.setLocalTranslation(30, 650, 0);
         guiNode.attachChild(container);
 
-        Button clickMe = container.addChild(new Button("READY"));
+
+        clickMe = container.addChild(new Button("CONNECTING"));
+        clickMe.setEnabled(false);
         clickMe.addClickCommands(source -> {
             // If the button is clicked -> Apply forces to each player
-            for (Map.Entry<String, Force> entry : forces.entrySet()) {
-                BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
-                bodyCtrl.body.applyForce(entry.getValue());
-            }
-            forces.clear(); // Clear the forces map
+
+            // Message message = new PlayerMessage("Shot",forceArray);
+            // message.setReliable(true);
+
+            // myClient.send(message);
+            clickMe.setEnabled(false);
+            clickMe.setText("Waiting");
 
             // TODO: Remove charge bar (Do it in RUNNING state)
             rootNode.detachChildNamed("ChargeBar-Player-B1");
@@ -438,7 +466,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             // Create the charge bar - percentage
             Quad chargeBarMesh = new Quad(playerRadius * 2f * (float) power / 250f, rectHeight);
             Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-            chargeBarMat.setColor("Color", ColorRGBA.Blue);
+            chargeBarMat.setColor("Color", myTeamColor == "B" ? ColorRGBA.Blue : ColorRGBA.Red);
             Geometry chargeBarGeom = new Geometry("ChargeBar-" + name, chargeBarMesh);
             chargeBarGeom.setMaterial(chargeBarMat);
             chargeBarGeom.setLocalTranslation(pos);
@@ -455,5 +483,67 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         q.updateCounts();
         oldChargeBar.updateGeometricState();
         oldChargeBar.updateModelBound();
+    }
+
+
+    public class ClientListener implements MessageListener<Client> {
+        public void messageReceived(Client source, Message message) {
+            if (message instanceof PlayerMessage) {
+                // do something with the message
+                PlayerMessage helloMessage = (PlayerMessage) message;
+
+                String command = helloMessage.getCommand();
+                // Blue
+                if (command.equals("Blue")) {
+                    myTeamColor = "B";
+                }
+                // Red
+                if (command.equals("Red")) {
+                    myTeamColor = "R";
+                }
+                if (command.equals("Start")) {
+                    clickMe.setText("Ready");
+                    clickMe.setEnabled(true);
+                }
+                if (command.equals("Run")) {
+                    forces = helloMessage.getForces();
+                    clickMe.setText("Running");
+                    for (Map.Entry<String, Force> entry : forces.entrySet()) {
+                        BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
+                        bodyCtrl.body.applyForce(entry.getValue());
+                    }
+                    forces.clear(); // Clear the forces map
+                }
+            } // else...
+        }
+    }
+
+    public class CSL implements ClientStateListener {
+
+        @Override
+        public void clientConnected(Client c) {
+            Message message = new PlayerMessage("Hello World!");
+            message.setReliable(true);
+            myClient.send(message);
+        }
+
+        @Override
+        public void clientDisconnected(Client c, DisconnectInfo info) {
+            System.out.println("Disconnect");
+        }
+
+        public void ForcesToArray() {
+            for (Map.Entry<String, Force> entry : forces.entrySet()) {
+                String name = entry.getKey();
+                if (name.startsWith("Player-B")) {
+                    if (name.endsWith("1")) {
+                        System.out.println("1");
+                    }
+
+                } else if (entry.getKey().startsWith("Player-R")) {
+
+                }
+            }
+        }
     }
 }
