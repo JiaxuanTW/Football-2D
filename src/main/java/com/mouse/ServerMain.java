@@ -4,23 +4,18 @@ import com.jme3.app.SimpleApplication;
 import com.jme3.network.*;
 import com.jme3.network.serializing.Serializer;
 import com.jme3.system.JmeContext;
-import org.dyn4j.dynamics.Force;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class ServerMain extends SimpleApplication {
-    private static Map<String, Force> forces = new HashMap<>();
 
-    private double[][] forceArray = new double[6][2];
-    private int blueScore = 0;
-    private int redScore = 0;
-    private int turns = 0;
+    private final double[][] forceArray = new double[6][2];
+
     static Server myServer;
 
     boolean[] shotCheck = {false, false};
     boolean[] stopCheck = {false, false};
+    boolean[] goalCheck = {false, false};
     boolean start = false;
 
     public static void main(String[] args) {
@@ -45,20 +40,45 @@ public class ServerMain extends SimpleApplication {
 
     @Override
     public void simpleUpdate(float tpf) {
+
         if (!start && (myServer.getConnections().size() == 2)) {
-            myServer.broadcast(new PlayerMessage("Start"));
+            Message message = new PlayerMessage("Start");
+            message.setReliable(true);
+            myServer.broadcast(message);
             start = true;
         }
         if (shotCheck[0] && shotCheck[1]) {
             shotCheck[0] = false;
             shotCheck[1] = false;
-            myServer.broadcast(new PlayerMessage("Run", forceArray));
+            Message message = new PlayerMessage("Run", forceArray);
+            message.setReliable(true);
+            myServer.broadcast(message);
+            for (int i = 0; i < 6; i++) {
+                for (int j = 0; j < 2; j++) {
+                    forceArray[i][j] = 0;
+                }
+            }
         }
 
         if (stopCheck[0] && stopCheck[1]) {
             stopCheck[0] = false;
             stopCheck[1] = false;
-            myServer.broadcast(new PlayerMessage("Round"));
+            Message message = new PlayerMessage("Round");
+            message.setReliable(true);
+            myServer.broadcast(message);
+        }
+
+        if (goalCheck[0] && goalCheck[1]) {
+            goalCheck[0] = false;
+            goalCheck[1] = false;
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            Message message = new PlayerMessage("Reset");
+            message.setReliable(true);
+            myServer.broadcast(message);
         }
     }
 
@@ -83,11 +103,14 @@ public class ServerMain extends SimpleApplication {
                 if (command.equals("Stop")) {
                     stopCheck[source.getId()] = true;
                 }
+                if (command.startsWith("Score")) {
+                    goalCheck[source.getId()] = true;
+                }
             } // else....
         }
     }
 
-    public class PlayerComeListener implements ConnectionListener {
+    public static class PlayerComeListener implements ConnectionListener {
 
 
         @Override
@@ -114,7 +137,7 @@ public class ServerMain extends SimpleApplication {
 
         @Override
         public void connectionRemoved(Server server, HostedConnection conn) {
-
+            myServer.close();
         }
     }
 }

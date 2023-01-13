@@ -43,6 +43,7 @@ dependencies {
     implementation 'com.simsilica:lemur-proto:1.13.0'
 
     implementation 'org.dyn4j:dyn4j:5.0.1'
+    implementation 'com.github.stephengold:jme-ttf:2.2.4'
 }
 
 distZip {

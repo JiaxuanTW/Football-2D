@@ -1,9 +1,13 @@
 package com.mouse;
 
+import com.atr.jme.font.TrueTypeBMP;
+import com.atr.jme.font.TrueTypeFont;
+import com.atr.jme.font.asset.TrueTypeKeyBMP;
+import com.atr.jme.font.asset.TrueTypeLoader;
+import com.atr.jme.font.shape.TrueTypeNode;
+import com.atr.jme.font.util.Style;
 import com.jme3.app.SimpleApplication;
 import com.jme3.collision.CollisionResults;
-import com.jme3.font.BitmapFont;
-import com.jme3.font.BitmapText;
 import com.jme3.input.MouseInput;
 import com.jme3.input.controls.ActionListener;
 import com.jme3.input.controls.AnalogListener;
@@ -41,17 +45,22 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 
 public class MyGame extends SimpleApplication implements ActionListener, AnalogListener {
     Button clickMe;
+    static MyGame app;
+    TrueTypeNode blueScoreText;
+    TrueTypeNode redScoreText;
+    TrueTypeNode turnsText;
     Client myClient = null;
     private static final float PPM = 100;
-    private static final float POWER_LIMIT = 5;
-    private static final float POWER_MULTIPLIER = 50;
+    private static final float POWER_LIMIT = 2.5f;
+    private static final float POWER_MULTIPLIER = 100;
     private final World<Body> world = new World<>();
     private Spatial selectedPlayer;
-    private Map<String, Force> forces = new HashMap<>();
+    private final Map<String, Force> forces = new HashMap<>();
     private String myTeamColor = "N"; // B(Blue), R(Red), N(None)
     private int blueScore = 0;
     private int redScore = 0;
@@ -65,11 +74,14 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             "Player-R2",
             "Player-R3"};
 
+    private static final double[][] initialPos = {{-200, 80}, {-150, -60}, {-200, -200}, {200, 80}, {150, -60}, {200, -200}};
+
     public static void main(String[] args) {
 
 
-        MyGame app = new MyGame();
+        app = new MyGame();
         AppSettings settings = new AppSettings(true);
+        System.out.println(initialPos[0][0]);
         settings.setResolution(1280, 720);
         settings.setTitle("2D Football Game");
         app.setSettings(settings);
@@ -94,9 +106,11 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         setDisplayStatView(false);
         setDisplayFps(false);
 
-
         // Init Lemur GUI
         GuiGlobals.initialize(this);
+
+        // Init jME-TTF
+        assetManager.registerLoader(TrueTypeLoader.class, "ttf");
 
         // Create objects
         createBackground();
@@ -110,8 +124,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         createPlayer("Player-R3", ColorRGBA.Red, 200, -200);
         createBall();
         createHUD();
-        createText(blueScore, redScore);
-
+        createText(blueScore, redScore, turns);
 
         try {
             myClient = Network.connectToServer("localhost", 4234);
@@ -122,7 +135,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
 
         // Register input listeners
         inputManager.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
@@ -141,22 +153,38 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         Spatial redGoalArea = rootNode.getChild("GoalAreaRed");
 
         // Detect if the ball enters the goal
-        if (blueGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
-            System.out.println("Goal (Ball enters the Blue's goal)");
-        } else if (redGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
-            System.out.println("Goal (Ball enters the Red's goal)");
-        }
+
 
         if (clickMe.getText().equals("Running")) {
+            if (blueGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
+                clickMe.setText("Score");
+                Message message = new PlayerMessage("ScoreB");
+                message.setReliable(true);
+                myClient.send(message);
+
+                blueScore++;
+                System.out.println("Goal (Ball enters the Blue's goal)");
+            } else if (redGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
+                clickMe.setText("Score");
+                Message message = new PlayerMessage("ScoreＲ");
+                message.setReliable(true);
+                myClient.send(message);
+
+                redScore++;
+                System.out.println("Goal (Ball enters the Red's goal)");
+            }
+
+
             boolean flag = false;
-            // TODO: If every object stops moving -> change game state
             BodyControl ballBodyCtrl = ball.getUserData("bodyControl");
-            if (!ballBodyCtrl.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+            if (!ballBodyCtrl.body.getLinearVelocity().equals(new Vector2(0, 0))
+                    || !(ballBodyCtrl.body.getAngularVelocity() == 0)) {
                 flag = true;
             }
             for (int i = 0; i < 6; i++) {
                 BodyControl obj = rootNode.getChild(nameArray[i]).getUserData("bodyControl");
-                if (!obj.body.getLinearVelocity().equals(new Vector2(0, 0))) {
+                if (!obj.body.getLinearVelocity().equals(new Vector2(0, 0)) ||
+                        !(obj.body.getAngularVelocity() == 0)) {
                     flag = true;
                 }
             }
@@ -257,6 +285,11 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 bodyCtrl.body.rotateAboutCenter(cursorAngle - playerAngle);
             }
         }
+    }
+
+    @Override
+    public void stop(boolean waitFor) {
+        super.stop(false);
     }
 
     private void createBackground() {
@@ -385,11 +418,11 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         Material directMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         directMat.setTexture("ColorMap", directTex);
         directMat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
-        Geometry directGeom = new Geometry("Triangle", directMesh);
+        Geometry directGeom = new Geometry(name + "-Triangle", directMesh);
         directGeom.setMaterial(directMat);
         directGeom.move(-triangleSize / 2, playerRadius + 10 / PPM, 0);
 
-        Node node = new Node("PlayerNode");
+        Node node = new Node(name + "PlayerNode");
         BodyControl control = new BodyControl(body);
         playerGeom.setUserData("bodyControl", control);
         node.addControl(control);
@@ -431,12 +464,23 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
     }
 
     private void createHUD() {
+        // Quad quad = new Quad(180, 50);
+        // Texture tex = assetManager.loadTexture("Textures/button.png");
+        // Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        // mat.setTexture("ColorMap", tex);
+        // mat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);
+        // Geometry geom = new Geometry("Button", quad);
+        // geom.setMaterial(mat);
+        // geom.setLocalTranslation(1085, 20, 0);
+        // guiNode.attachChild(geom);
+
         Container container = new Container();
-        container.setLocalTranslation(30, 650, 0);
+        // container.setLocalTranslation(1075, 55, 0);
+        container.setLocalTranslation(10, 35, 0);
         guiNode.attachChild(container);
 
-
         clickMe = container.addChild(new Button("CONNECTING"));
+        clickMe.setFontSize(20);
         clickMe.setEnabled(false);
         clickMe.addClickCommands(source -> {
             clickMe.setEnabled(false);
@@ -448,8 +492,6 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
 
             myClient.send(message);
 
-
-            // TODO: Remove charge bar (Do it in RUNNING state)
             rootNode.detachChildNamed("ChargeBar-Player-B1");
             rootNode.detachChildNamed("ChargeBar-Player-B2");
             rootNode.detachChildNamed("ChargeBar-Player-B3");
@@ -465,14 +507,27 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         });
     }
 
-    private void createText(int blueScore, int redScore) {
-        BitmapFont font = assetManager.loadFont("Interface/Fonts/Default.fnt");
-        BitmapText text = new BitmapText(font);
-        text.setText(String.valueOf(blueScore));
-        text.setSize(55f);
-        text.setColor(ColorRGBA.Black);
-        text.setLocalTranslation(380, 670, 0);
-        guiNode.attachChild(text);
+    private void createText(int blueScore, int redScore, int turns) {
+        // TrueTypeKeyMesh ttk2 = new TrueTypeKeyMesh("Interface/Fonts/NotoSans-Bold.ttf", Style.Bold, 300);
+        // TrueTypeFont goalFont = (TrueTypeMesh) assetManager.loadAsset(ttk2);
+        // TrueTypeNode goalText = goalFont.getText("GOAL!", 0, ColorRGBA.White);
+        // goalText.setLocalTranslation(640 - goalText.getWidth() / 2, 360 + goalText.getHeight() / 2, 0);
+        // guiNode.attachChild(goalText);
+
+        TrueTypeKeyBMP ttk = new TrueTypeKeyBMP("Interface/Fonts/NotoSans-Bold.ttf", Style.Bold, 60);
+        TrueTypeFont font = (TrueTypeBMP) assetManager.loadAsset(ttk);
+
+        blueScoreText = font.getText(String.valueOf(blueScore), 0, ColorRGBA.DarkGray);
+        blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
+        guiNode.attachChild(blueScoreText);
+
+        redScoreText = font.getText(String.valueOf(redScore), 0, ColorRGBA.DarkGray);
+        redScoreText.setLocalTranslation(837 - redScoreText.getWidth() / 2, 695, 0);
+        guiNode.attachChild(redScoreText);
+
+        turnsText = font.getText(String.valueOf(turns), 0, ColorRGBA.White);
+        turnsText.setLocalTranslation(640 - turnsText.getWidth() / 2, 695, 0);
+        guiNode.attachChild(turnsText);
     }
 
     private void displayChargeBar(String name, double power, Vector3f pos) {
@@ -495,7 +550,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
             // Create the charge bar - percentage
             Quad chargeBarMesh = new Quad(playerRadius * 2f * (float) power / 250f, rectHeight);
             Material chargeBarMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-            chargeBarMat.setColor("Color", myTeamColor == "B" ? ColorRGBA.Blue : ColorRGBA.Red);
+            chargeBarMat.setColor("Color", Objects.equals(myTeamColor, "B") ? ColorRGBA.Blue : ColorRGBA.Red);
             Geometry chargeBarGeom = new Geometry("ChargeBar-" + name, chargeBarMesh);
             chargeBarGeom.setMaterial(chargeBarMat);
             chargeBarGeom.setLocalTranslation(pos);
@@ -525,10 +580,17 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 // Blue
                 if (command.equals("Blue")) {
                     myTeamColor = "B";
+                    for (int i = 3; i < 6; i++) {
+                        rootNode.getChild(nameArray[i]).getParent().detachChildNamed(nameArray[i] + "-Triangle");
+
+                    }
                 }
                 // Red
                 if (command.equals("Red")) {
                     myTeamColor = "R";
+                    for (int i = 0; i < 3; i++) {
+                        rootNode.getChild(nameArray[i]).getParent().detachChildNamed(nameArray[i] + "-Triangle");
+                    }
                 }
                 if (command.equals("Start")) {
                     clickMe.setText("Ready");
@@ -537,7 +599,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 if (command.equals("Run")) {
                     clickMe.setText("Running");
                     forceArray = helloMessage.getForcearray();
-                    arrayToForcees();
+                    arrayToForces();
                     for (Map.Entry<String, Force> entry : forces.entrySet()) {
                         BodyControl bodyCtrl = rootNode.getChild(entry.getKey()).getUserData("bodyControl");
                         bodyCtrl.body.applyForce(entry.getValue());
@@ -553,6 +615,40 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                     clickMe.setText("Ready");
                     clickMe.setEnabled(true);
                     turns++;
+                    redScoreText.setText(String.valueOf(redScore));
+                    redScoreText.updateGeometry();
+                    redScoreText.setLocalTranslation(837 - redScoreText.getWidth() / 2, 695, 0);
+                    blueScoreText.updateGeometry();
+                    blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
+                    blueScoreText.setText(String.valueOf(blueScore));
+                    turnsText.setText(String.valueOf(turns));
+                    turnsText.updateGeometry();
+                    turnsText.setLocalTranslation(640 - turnsText.getWidth() / 2, 695, 0);
+                }
+                if (command.equals("Reset")) {
+                    BodyControl ballCtrl = rootNode.getChild("Ball").getUserData("bodyControl");
+                    ballCtrl.body.setLinearVelocity(0, 0);
+                    ballCtrl.body.setAngularVelocity(0);
+                    ballCtrl.body.translateToOrigin();
+                    ballCtrl.body.translate(0, -60 / PPM);
+                    for (int i = 0; i < 6; i++) {
+                        BodyControl obj = rootNode.getChild(nameArray[i]).getUserData("bodyControl");
+                        obj.body.setLinearVelocity(0, 0);
+                        obj.body.translateToOrigin();
+                        obj.body.translate(initialPos[i][0] / PPM, initialPos[i][1] / PPM);
+                    }
+                    clickMe.setText("Ready");
+                    clickMe.setEnabled(true);
+                    turns++;
+                    redScoreText.setText(String.valueOf(redScore));
+                    redScoreText.updateGeometry();
+                    redScoreText.setLocalTranslation(837 - redScoreText.getWidth() / 2, 695, 0);
+                    blueScoreText.updateGeometry();
+                    blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
+                    blueScoreText.setText(String.valueOf(blueScore));
+                    turnsText.setText(String.valueOf(turns));
+                    turnsText.updateGeometry();
+                    turnsText.setLocalTranslation(640 - turnsText.getWidth() / 2, 695, 0);
                 }
             } // else...
         }
@@ -598,7 +694,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         }
     }
 
-    public void arrayToForcees() {
+    public void arrayToForces() {
         for (int i = 0; i < 6; i++) {
             for (int j = 0; j < 2; j++) {
                 forces.put(nameArray[i], new Force(forceArray[i][0], forceArray[i][1]));
@@ -618,8 +714,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         @Override
         public void clientDisconnected(Client c, DisconnectInfo info) {
             System.out.println("Disconnect");
+            app.stop();
         }
-
-
     }
 }
