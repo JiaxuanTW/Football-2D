@@ -2,11 +2,12 @@
 /.nb-gradle/
 /build/
 /private/
+/out/
 /*.dll
 /*.dylib
 /*.so
 
-#Although most of the .idea directory should not be committed there is a legitimate purpose for committing run configurations
+# Although most of the .idea directory should not be committed there is a legitimate purpose for committing run configurations
 /.idea/
 !/.idea/runConfigurations/
 

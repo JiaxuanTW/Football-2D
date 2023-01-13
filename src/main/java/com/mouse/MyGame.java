@@ -127,7 +127,7 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
         createText(blueScore, redScore, turns);
 
         try {
-            myClient = Network.connectToServer("localhost", 4234);
+            myClient = Network.connectToServer("192.168.1.107", 4234);
             Serializer.registerClass(PlayerMessage.class);
             myClient.start();
             myClient.addMessageListener(new ClientListener(), PlayerMessage.class);
@@ -161,16 +161,14 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                 Message message = new PlayerMessage("ScoreB");
                 message.setReliable(true);
                 myClient.send(message);
-
-                blueScore++;
+                redScore++;
                 System.out.println("Goal (Ball enters the Blue's goal)");
             } else if (redGoalArea.getWorldBound().intersects(ball.getWorldBound())) {
                 clickMe.setText("Score");
-                Message message = new PlayerMessage("ScoreＲ");
+                Message message = new PlayerMessage("ScoreR");
                 message.setReliable(true);
                 myClient.send(message);
-
-                redScore++;
+                blueScore++;
                 System.out.println("Goal (Ball enters the Red's goal)");
             }
 
@@ -616,14 +614,14 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                     clickMe.setEnabled(true);
                     turns++;
                     redScoreText.setText(String.valueOf(redScore));
-                    redScoreText.updateGeometry();
                     redScoreText.setLocalTranslation(837 - redScoreText.getWidth() / 2, 695, 0);
-                    blueScoreText.updateGeometry();
-                    blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
+                    redScoreText.updateGeometry();
                     blueScoreText.setText(String.valueOf(blueScore));
+                    blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
+                    blueScoreText.updateGeometry();
                     turnsText.setText(String.valueOf(turns));
-                    turnsText.updateGeometry();
                     turnsText.setLocalTranslation(640 - turnsText.getWidth() / 2, 695, 0);
+                    turnsText.updateGeometry();
                 }
                 if (command.equals("Reset")) {
                     BodyControl ballCtrl = rootNode.getChild("Ball").getUserData("bodyControl");
@@ -641,14 +639,14 @@ public class MyGame extends SimpleApplication implements ActionListener, AnalogL
                     clickMe.setEnabled(true);
                     turns++;
                     redScoreText.setText(String.valueOf(redScore));
-                    redScoreText.updateGeometry();
                     redScoreText.setLocalTranslation(837 - redScoreText.getWidth() / 2, 695, 0);
-                    blueScoreText.updateGeometry();
+                    redScoreText.updateGeometry();
                     blueScoreText.setLocalTranslation(443 - blueScoreText.getWidth() / 2, 695, 0);
                     blueScoreText.setText(String.valueOf(blueScore));
+                    blueScoreText.updateGeometry();
                     turnsText.setText(String.valueOf(turns));
-                    turnsText.updateGeometry();
                     turnsText.setLocalTranslation(640 - turnsText.getWidth() / 2, 695, 0);
+                    turnsText.updateGeometry();
                 }
             } // else...
         }
